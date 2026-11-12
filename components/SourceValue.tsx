@@ -33,9 +33,11 @@ interface SourceValueProps<T> {
   field: FieldValue<T>;
   /** 값 1개를 화면 조각으로 바꾸는 방법 */
   children: (value: T) => ReactNode;
+  /** 좁은 칸에서 출처 불일치 값을 나란히 놓지 않고 위아래로 쌓는다 */
+  stacked?: boolean;
 }
 
-export function SourceValue<T>({ field, children }: SourceValueProps<T>) {
+export function SourceValue<T>({ field, children, stacked = false }: SourceValueProps<T>) {
   if (field.kind === "unknown") {
     return (
       <div>
@@ -53,7 +55,7 @@ export function SourceValue<T>({ field, children }: SourceValueProps<T>) {
           <span aria-hidden="true">⚠</span>
           {SOURCE_CONFLICT_NOTICE}
         </p>
-        <ul className="grid gap-3 sm:grid-cols-2">
+        <ul className={stacked ? "grid gap-2" : "grid gap-3 sm:grid-cols-2"}>
           {field.values.map((v) => (
             <li key={v.source.source} className="min-w-0 rounded bg-white/70 p-2 dark:bg-zinc-900/60">
               <span className="mb-0.5 block text-xs font-semibold text-zinc-600 dark:text-zinc-300">

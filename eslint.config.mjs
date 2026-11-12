@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // 삭제 대신 옮겨 둔 파일(CLAUDE.md 규칙)은 검사하지 않는다
+    "trash-can/**",
   ]),
 ]);
 
