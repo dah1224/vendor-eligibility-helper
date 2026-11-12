@@ -1,36 +1,80 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 수의계약 적격업체 평가 도우미
 
-## Getting Started
+시설관리 수의계약을 담당하는 **계약담당자**가 업체를 평가할 때, 여러 사이트에 흩어진 정보를 일일이 찾지 않고 **사업자등록번호 하나로 조달청 정보를 한 화면에 모아 보고**, 정해진 규칙으로 **적격 / 부적격 / 검토 필요**를 확인하도록 돕는 웹 도구입니다.
 
-First, run the development server:
+> **최종 결정은 담당자가 합니다.** 이 도구는 판단을 돕는 참고 자료이며, 화면에도 이 문구를 항상 표시합니다.
+
+## 무엇을 하나요
+
+1. 사업자등록번호를 입력합니다. (하이픈은 있어도 없어도 되고, 숫자 10자리가 아니면 바로 형식 오류를 알려줍니다.)
+2. 조달청 나라장터에서 업체 정보를 가져와 한 화면에 보여줍니다.
+   - **기본정보:** 상호, 사업자등록번호, 업체업무구분, 개업일, 주소지(시군구)
+   - **자격사항 검토:** 조달청 업체등록(등록 업종·유효기간), 행정처분 이력(조달청 부정당제재)
+3. 코드가 규칙대로 **적격 / 부적격 / 검토 필요**를 판정하고, 사유를 1줄 이상 보여줍니다.
+4. AI가 판정 사유를 읽기 쉬운 문장으로 정리합니다. (AI는 문장만 다듬고, 판정은 바꾸지 않습니다.)
+
+### 판정 규칙
+
+| 결과 | 조건 (하나라도 해당) |
+|---|---|
+| **부적격** | 조달청 부정당제재(입찰참가자격 제한) 이력이 1건 이상 / 조달청에 등록된 업종이 모두 유효기간이 지남 |
+| **검토 필요** | 등록 업종의 유효기간이 30일 이내 / 등록된 업종이 없음 / "확인 불가" 항목이 1개 이상 |
+| **적격** | 위에 해당하는 조건이 없음 |
+
+- 못 구한 값은 **"확인 불가"**로 표시하고 추측해서 채우지 않습니다. 조회 호출이 일부 실패해도 "없음"으로 단정하지 않고 검토 필요로 처리합니다.
+- **조달청에서 제공하지 않는 항목**(면허, 영업 상태·폐업·휴업, 계약 실적, 신용·재무)은 표시하지 않고, 화면 맨 아래에 그 이름만 밝힙니다. 판정은 **조달청 정보만으로** 한 결과입니다.
+
+## 기술
+
+- **Next.js 16** (App Router) · React 19 · TypeScript · Tailwind CSS 4
+- **데이터:** 조달청 나라장터 사용자정보 서비스 OpenAPI (기본정보·업종등록·부정당제재)
+- **AI:** OpenAI API (판단 사유 문장 정리)
+- **테스트:** Vitest (조달청·AI는 모의 응답으로 시험)
+- **배포:** Vercel
+
+## 직접 실행하기
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+# 프로젝트 폴더에 .env 파일을 만들고 아래 "환경 변수"를 적습니다
+npm run dev            # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+| 명령 | 하는 일 |
+|---|---|
+| `npm run dev` | 개발 서버 실행 |
+| `npm run build` | 배포용 빌드 |
+| `npm run lint` | 코드 검사 |
+| `npm test` | 자동 테스트 |
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 환경 변수 (서버에서만 사용)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| 이름 | 용도 | 필수 |
+|---|---|:---:|
+| `NARAMARKET_API_KEY` | 조달청 나라장터 조회 (공공데이터포털에서 발급) | 예 |
+| `OPENAI_API_KEY` | AI 판단 사유 문장 정리 | 예 |
+| `OPENAI_MODEL` | 사용할 AI 모델 이름 (기본값 `gpt-4.1-mini`) | 아니오 |
 
-## Learn More
+두 키 모두 서버 코드에서만 읽고 브라우저로 보내지 않습니다. `.env`는 Git에 올리지 않습니다.
 
-To learn more about Next.js, take a look at the following resources:
+## 보안·개인정보
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- 조달청 응답에 들어 있는 **대표자 이름·전화번호·상세 주소는 읽지 않고 버립니다.** 주소는 시군구까지만 보여줍니다.
+- 입력한 사업자등록번호는 저장하지 않습니다. (같은 번호 재조회를 줄이려고 조회 결과를 서버 메모리에 5분만 둡니다.)
+- AI에는 업체명·판정·사유만 보내고 사업자등록번호는 보내지 않습니다. 서버가 판정을 직접 다시 계산하므로 브라우저가 보낸 문장은 신뢰하지 않습니다.
+- 보안 헤더(CSP 등), 검색엔진 색인 차단, 호출 횟수 제한, 요청 출처 확인을 적용했습니다.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 기획·설계 문서
 
-## Deploy on Vercel
+| 문서 | 내용 |
+|---|---|
+| [PRD.md](PRD.md) | 서비스 기획서: 문제 정의, 목표, 주요 기능, 범위, 보안·개인정보 |
+| [PLAN.md](PLAN.md) | 구현 계획: 성공 기준, 작업 순서, 요구사항, 위험과 대응 |
+| [DESIGN.md](DESIGN.md) | 설계서: 화면, 데이터 흐름, 판정 규칙, API |
+| [CLAUDE.md](CLAUDE.md) | 개발 규칙 |
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 한계
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- 조달청이 조회 시점에 효력 있는 부정당제재만 제공해, **과거에 해제·만료된 제재는 볼 수 없습니다.**
+- 면허·영업 상태(폐업·휴업)·건설업 행정처분은 확인하지 못합니다. 이런 항목은 별도 확인이 필요합니다.
+- 로그인이 없는 담당자 1인용 도구이며, 실제 계약 체결·결재 기능은 없습니다.
