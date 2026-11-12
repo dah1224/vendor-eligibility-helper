@@ -1,5 +1,5 @@
-// Design Ref: §3.1, §3.2 SourceValue — 항목 값 1개를 출처·기준일과 함께 보여준다.
-//   · 값이 있음   → 값 + "출처 · 기준일"
+// Design Ref: §3.1, §3.2 SourceValue — 항목 값 1개를 보여준다. (출처·기준일은 대분류 맨 아래 SourceFooter에 모아 보여준다)
+//   · 값이 있음   → 값
 //   · 확인 불가   → 회색 "확인 불가" 배지 (빈칸·"-"·0으로 대신하지 않는다 — PRD)
 //   · 출처 불일치 → 한쪽만 고르지 않고 출처별 값을 나란히 모두 보여주고 "출처 간 정보가 다릅니다" 경고를 붙인다 (PRD, 작업 14)
 import type { ReactNode } from "react";
@@ -10,15 +10,6 @@ export const SOURCE_CONFLICT_NOTICE = "출처 간 정보가 다릅니다";
 
 /** 나란히 놓은 값 위에 붙이는 출처 이름 */
 const SOURCE_SHORT_NAME: Record<SourceName, string> = { KISCON: "KISCON", PPS: "조달청" };
-
-/** "출처: 샘플(KISCON 형식) · 기준일 2026-11-11" */
-export function SourceNote({ source }: { source: SourceMeta }) {
-  return (
-    <span className="block text-xs text-zinc-500 dark:text-zinc-400">
-      {source.label} · 기준일 {source.baseDate}
-    </span>
-  );
-}
 
 /** 값이 없을 때 보여주는 배지 */
 export function UnknownBadge() {
@@ -39,12 +30,7 @@ interface SourceValueProps<T> {
 
 export function SourceValue<T>({ field, children, stacked = false }: SourceValueProps<T>) {
   if (field.kind === "unknown") {
-    return (
-      <div>
-        <UnknownBadge />
-        {field.source && <SourceNote source={field.source} />}
-      </div>
-    );
+    return <UnknownBadge />;
   }
 
   if (field.kind === "conflict") {
@@ -62,7 +48,6 @@ export function SourceValue<T>({ field, children, stacked = false }: SourceValue
                 {SOURCE_SHORT_NAME[v.source.source]}
               </span>
               <div>{children(v.value)}</div>
-              <SourceNote source={v.source} />
             </li>
           ))}
         </ul>
@@ -70,10 +55,58 @@ export function SourceValue<T>({ field, children, stacked = false }: SourceValue
     );
   }
 
+  return <div>{children(field.value)}</div>;
+}
+
+// ───────────── 대분류 맨 아래에 모아 보여주는 출처 표 ─────────────
+
+/** 출처 표에 올릴 항목 하나: 항목 이름 + 그 항목의 값(출처를 꺼내는 용도) */
+export interface SourceItem {
+  label: string;
+  field: FieldValue<unknown>;
+}
+
+/** 항목 값에서 출처 목록을 꺼낸다 (확인 불가인데 출처도 모르면 빈 목록) */
+function sourcesOf(field: FieldValue<unknown>): SourceMeta[] {
+  if (field.kind === "value") return [field.source];
+  if (field.kind === "conflict") return field.values.map((v) => v.source);
+  return field.source ? [field.source] : [];
+}
+
+/**
+ * 대분류 하나에 들어 있는 항목들의 출처·기준일을 표 하나로 모은다.
+ * 같은 출처·같은 기준일이면 한 줄로 합친다. (예: "상호, 업종, 영업 상태 — 샘플(KISCON 형식) · 2026-11-11")
+ */
+export function SourceFooter({ items }: { items: SourceItem[] }) {
+  const rows = new Map<string, { source: SourceMeta; labels: string[] }>();
+  for (const { label, field } of items) {
+    for (const source of sourcesOf(field)) {
+      const key = `${source.source}|${source.label}|${source.baseDate}`;
+      const row = rows.get(key) ?? { source, labels: [] };
+      if (!row.labels.includes(label)) row.labels.push(label);
+      rows.set(key, row);
+    }
+  }
+  if (rows.size === 0) return null;
+
   return (
-    <div>
-      <div>{children(field.value)}</div>
-      <SourceNote source={field.source} />
-    </div>
+    <table aria-label="출처" className="w-full border-t border-zinc-200 text-left text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+      <thead>
+        <tr>
+          <th scope="col" className="w-24 py-1.5 pr-3 pt-2 font-medium">출처 대상</th>
+          <th scope="col" className="py-1.5 pr-3 pt-2 font-medium">출처</th>
+          <th scope="col" className="w-28 py-1.5 pt-2 font-medium">기준일</th>
+        </tr>
+      </thead>
+      <tbody>
+        {[...rows.values()].map(({ source, labels }) => (
+          <tr key={`${source.source}-${source.baseDate}`}>
+            <td className="py-0.5 pr-3 align-top">{labels.join(", ")}</td>
+            <td className="py-0.5 pr-3 align-top">{source.label}</td>
+            <td className="py-0.5 align-top tabular-nums">{source.baseDate}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
