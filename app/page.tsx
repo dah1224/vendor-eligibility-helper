@@ -10,6 +10,7 @@ import { LicenseSelect, type LicenseChoice } from "@/components/LicenseSelect";
 import { SearchBar } from "@/components/SearchBar";
 import { SearchResultList } from "@/components/SearchResultList";
 import { VerdictPanel, type ReasonState } from "@/components/VerdictPanel";
+import { LICENSE_REQUIRED_MESSAGE } from "@/lib/data/licenses";
 import { AI_FAILED_MESSAGE } from "@/lib/messages";
 import type { SearchResultItem } from "@/lib/search";
 import type { CompanyView, Judgment } from "@/lib/types";
@@ -74,7 +75,16 @@ export default function Home() {
   /** 선택한 업체의 조회 항목과 판정을 불러온다 (판정은 서버가 고른 면허로 한다) */
   async function loadDetail(id: string) {
     const chosen = licenseRef.current;
-    if (chosen === "") return;
+    if (chosen === "") {
+      // 면허를 고르지 않고 [선택]을 누른 경우: 말없이 무시하지 않고 안내한다.
+      // 고른 업체는 기억해 두므로, 면허를 고르면 handleLicenseChange가 바로 이어서 조회한다.
+      detailRequestId.current++;
+      reasonRequestId.current++;
+      setSelectedId(id);
+      setDetail({ phase: "error", message: LICENSE_REQUIRED_MESSAGE });
+      setReason({ phase: "idle" });
+      return;
+    }
     const myId = ++detailRequestId.current;
     setSelectedId(id);
     setDetail({ phase: "loading" });
