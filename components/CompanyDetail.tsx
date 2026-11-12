@@ -22,7 +22,8 @@ const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 /** 표 머리글(세부 항목 이름) 13pt / 표 내용 12pt */
 const TH = "py-1.5 pr-3 text-left align-top text-[13pt] font-semibold text-zinc-700 dark:text-zinc-200";
 const TD = "py-1.5 pr-3 align-top text-[12pt] break-words";
-const TABLE = "w-full text-left";
+// 가로로 나란히 놓인 칸은 너비를 모두 같게(table-fixed) 한다
+const TABLE = "w-full table-fixed text-left";
 const ROW = "border-t border-zinc-100 dark:border-zinc-800";
 
 export function CompanyDetail({ view, evaluatedAt }: CompanyDetailProps) {
@@ -35,7 +36,7 @@ export function CompanyDetail({ view, evaluatedAt }: CompanyDetailProps) {
           className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
         >
           <div className="overflow-x-auto">
-            <table className={TABLE}>
+            <table className={`${TABLE} min-w-[640px]`}>
               <thead>
                 <tr>
                   <th scope="col" className={TH}>상호</th>
@@ -50,7 +51,7 @@ export function CompanyDetail({ view, evaluatedAt }: CompanyDetailProps) {
                   <td className={`${TD} font-medium`}>
                     <SourceValue field={view.basic.companyName} stacked>{(v) => v}</SourceValue>
                   </td>
-                  <td className={`${TD} whitespace-nowrap tabular-nums`}>{view.bizNo}</td>
+                  <td className={`${TD} tabular-nums`}>{view.bizNo}</td>
                   <td className={TD}>
                     <SourceValue field={view.basic.bizType} stacked>{(v) => v}</SourceValue>
                   </td>
@@ -64,17 +65,9 @@ export function CompanyDetail({ view, evaluatedAt }: CompanyDetailProps) {
               </tbody>
             </table>
           </div>
-          <p className="mb-3 mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+          <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
             주소지 값은 판정에 쓰지 않음 (확인 불가·불일치는 검토 필요에 반영)
           </p>
-          <SourceFooter
-            items={[
-              { label: "상호", field: view.basic.companyName },
-              { label: "업종", field: view.basic.bizType },
-              { label: "영업 상태", field: view.basic.bizStatus },
-              { label: "주소지", field: view.address },
-            ]}
-          />
         </section>
       </Group>
 
@@ -175,13 +168,6 @@ export function CompanyDetail({ view, evaluatedAt }: CompanyDetailProps) {
           </InfoCard>
         </div>
 
-        <SourceBox
-          items={[
-            { label: "면허", field: view.licenses },
-            { label: "조달청 업체등록", field: view.procurement },
-            { label: "행정처분 이력", field: view.sanctions },
-          ]}
-        />
       </Group>
 
       {/* 3) 그 외 사항 — 계약 실적 · 신용·재무를 가로로 나란히. 값은 판정에 쓰지 않는다 */}
@@ -238,13 +224,22 @@ export function CompanyDetail({ view, evaluatedAt }: CompanyDetailProps) {
           </InfoCard>
         </div>
 
-        <SourceBox
-          items={[
-            { label: "계약 실적", field: view.contracts },
-            { label: "신용·재무", field: view.credit },
-          ]}
-        />
       </Group>
+
+      {/* 출처 — 대분류별로 나누지 않고 화면 맨 아래에 한 번에 모아 보여준다 */}
+      <SourceBox
+        items={[
+          { label: "상호", field: view.basic.companyName },
+          { label: "업종", field: view.basic.bizType },
+          { label: "영업 상태", field: view.basic.bizStatus },
+          { label: "주소지", field: view.address },
+          { label: "면허", field: view.licenses },
+          { label: "조달청 업체등록", field: view.procurement },
+          { label: "행정처분 이력", field: view.sanctions },
+          { label: "계약 실적", field: view.contracts },
+          { label: "신용·재무", field: view.credit },
+        ]}
+      />
     </div>
   );
 }
@@ -259,12 +254,16 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-/** 대분류 맨 아래에 놓는 출처 상자 */
+/** 화면 맨 아래에 놓는 출처 상자 (전체 항목의 출처·기준일을 한 표로) */
 function SourceBox({ items }: { items: Parameters<typeof SourceFooter>[0]["items"] }) {
   return (
-    <div className="rounded-lg border border-zinc-200 bg-white px-4 pb-2 dark:border-zinc-800 dark:bg-zinc-900">
+    <section
+      aria-label="출처"
+      className="rounded-lg border border-zinc-200 bg-white px-4 pb-2 pt-3 dark:border-zinc-800 dark:bg-zinc-900"
+    >
+      <h3 className="text-sm font-semibold">출처</h3>
       <SourceFooter items={items} />
-    </div>
+    </section>
   );
 }
 

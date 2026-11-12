@@ -93,7 +93,7 @@ export function SourceFooter({ items }: { items: SourceItem[] }) {
     <table aria-label="출처" className="w-full border-t border-zinc-200 text-left text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
       <thead>
         <tr>
-          <th scope="col" className="w-24 py-1.5 pr-3 pt-2 font-medium">출처 대상</th>
+          <th scope="col" className="w-2/5 py-1.5 pr-3 pt-2 font-medium">출처 대상</th>
           <th scope="col" className="py-1.5 pr-3 pt-2 font-medium">출처</th>
           <th scope="col" className="w-28 py-1.5 pt-2 font-medium">기준일</th>
         </tr>
