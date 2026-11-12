@@ -112,6 +112,10 @@ function VerdictResult({
         </p>
       )}
 
+      <p className="text-xs text-zinc-500 dark:text-zinc-400">
+        조달청에서 받은 정보만으로 판정한 결과입니다. 면허·영업 상태·행정처분은 확인하지 않았습니다.
+      </p>
+
       {/* 판단 사유(AI 정리): 부적격·검토 필요일 때만. 실패해도 위의 판정 배지와 사유 목록은 그대로다. */}
       {judgment.verdict !== "적격" && <AiReason reason={reason} onRetry={onRetryReason} />}
     </div>

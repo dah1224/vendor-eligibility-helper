@@ -35,7 +35,7 @@ export type ReasonOutcome =
   | {
       ok: false;
       status: 404 | 502;
-      code: "NOT_FOUND" | "AI_FAILED";
+      code: "NOT_FOUND" | "PPS_FAILED" | "AI_FAILED";
       message: string;
     };
 
@@ -52,11 +52,10 @@ const SYSTEM_PROMPT = [
   "- 제목, 목록 기호, 마크다운 없이 평범한 문장으로만 쓰세요.",
 ].join("\n");
 
-/** 업체 이름: 값이 있으면 그 값, 출처 불일치면 첫 출처 값, 확인 불가면 일반 표현 */
+/** 업체 이름: 값이 있으면 그 값(외부 데이터이므로 40자까지만), 확인 불가면 일반 표현 */
 function companyLabel(view: CompanyView): string {
   const f = view.basic.companyName;
-  if (f.kind === "value") return f.value;
-  if (f.kind === "conflict") return f.values[0]?.value ?? "해당 업체";
+  if (f.kind === "value") return f.value.slice(0, 40);
   return "해당 업체";
 }
 
@@ -111,7 +110,7 @@ export async function generateReason(
   today?: string,
 ): Promise<ReasonOutcome> {
   // 1) 서버가 직접 조회·판정한다 (면허·업체가 올바른지 검사도 여기서)
-  const detail = getCompanyDetail(id, today);
+  const detail = await getCompanyDetail(id, today);
   if (!detail.ok) {
     return { ok: false, status: detail.status, code: detail.code, message: detail.message };
   }
@@ -123,7 +122,7 @@ export async function generateReason(
   }
 
   // 3) 같은 조합의 AI 결과가 이미 있으면 재사용한다 (판정이 같으므로 사유도 같다)
-  const cacheKey = `${id}|${judgment.evaluatedAt}|${judgment.verdict}`;
+  const cacheKey = `${id}|${judgment.evaluatedAt}|${judgment.verdict}|${JSON.stringify([judgment.disqualifiers, judgment.reviewItems])}`;
   const cached = reasonCache.get(cacheKey);
   if (cached) return { ok: true, text: cached, source: "ai" };
 

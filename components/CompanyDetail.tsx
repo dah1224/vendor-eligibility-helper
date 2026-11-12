@@ -1,10 +1,10 @@
-// Design Ref: §3 ④ 조회 항목 — 한 업체의 항목을 대분류 3개로 묶어 표로 보여준다.
-//   1) 기본정보    — 상호, 사업자등록번호, 업종, 영업 상태, 주소지(시군구)  (가로 한 줄 표)
-//   2) 자격사항 검토 — 면허(윗줄) / 조달청 업체등록 · 행정처분 이력(아랫줄에 가로로 나란히)
-//   3) 그 외 사항   — 계약 실적 · 신용·재무 (가로로 나란히)
-// 출처·기준일은 항목마다 붙이지 않고, 대분류 맨 아래에 표로 모아 보여준다.
-// 글자 크기: 세부 항목 이름(표 머리글) 13pt, 내용 12pt.
-// PRD: 확인하지 못한 항목은 "확인 불가"로 표시하고 추측해서 채우지 않는다 / 출처가 다르면 두 값을 모두 보여준다.
+// Design Ref: §3 ④ 조회 항목 — 조달청에서 가져올 수 있는 항목만 대분류로 묶어 표로 보여준다.
+//   1) 기본정보    — 상호, 사업자등록번호, 주소지(시군구)  (가로 한 줄 표)
+//   2) 자격사항 검토 — 조달청 업체등록(등록된 업종과 유효기간)
+// 조달청에서 받을 수 없는 항목(면허·영업 상태·행정처분·계약 실적·신용·재무)은 표시하지 않고, 맨 아래 출처 상자에 이름만 밝힌다.
+// 출처·기준일은 항목마다 붙이지 않고 화면 맨 아래에 한 번에 모아 보여준다.
+// 글자 크기: 세부 항목 이름(표 머리글) 13pt, 내용 12pt. 대분류 안은 가운데 정렬.
+// PRD: 확인하지 못한 항목은 "확인 불가"로 표시하고 추측해서 채우지 않는다.
 import type { ReactNode } from "react";
 import { InfoCard } from "@/components/InfoCard";
 import { SourceSummary, SourceValue } from "@/components/SourceValue";
@@ -16,10 +16,6 @@ interface CompanyDetailProps {
   /** 판정 기준일(오늘) — 만료까지 남은 일수 계산용 */
   evaluatedAt: string;
 }
-
-/** 금액은 백만원 단위로 표시한다. 백만원에 못 미치면 소수점으로 (예: 100,000원 → 0.1백만원, 50,000원 → 0.05백만원) */
-const million = (n: number) =>
-  `${(n / 1_000_000).toLocaleString("ko-KR", { maximumFractionDigits: 2 })}백만원`;
 
 /** 표 머리글(세부 항목 이름) 13pt / 표 내용 12pt */
 const TH = "py-1.5 px-2 text-center align-top text-[13pt] font-semibold text-zinc-700 dark:text-zinc-200";
@@ -38,30 +34,22 @@ export function CompanyDetail({ view, evaluatedAt }: CompanyDetailProps) {
           className="rounded-lg border border-zinc-200 bg-white p-4 text-center dark:border-zinc-800 dark:bg-zinc-900"
         >
           <div className="overflow-x-auto">
-            <table className={`${TABLE} min-w-[640px]`}>
+            <table className={`${TABLE} min-w-[420px]`}>
               <thead>
                 <tr>
                   <th scope="col" className={TH}>상호</th>
                   <th scope="col" className={TH}>사업자등록번호</th>
-                  <th scope="col" className={TH}>업종</th>
-                  <th scope="col" className={TH}>영업 상태</th>
                   <th scope="col" className={TH}>주소지(시군구)</th>
                 </tr>
               </thead>
               <tbody>
                 <tr className={ROW}>
                   <td className={`${TD} font-medium`}>
-                    <SourceValue field={view.basic.companyName} stacked>{(v) => v}</SourceValue>
+                    <SourceValue field={view.basic.companyName}>{(v) => v}</SourceValue>
                   </td>
                   <td className={`${TD} tabular-nums`}>{view.bizNo}</td>
                   <td className={TD}>
-                    <SourceValue field={view.basic.bizType} stacked>{(v) => v}</SourceValue>
-                  </td>
-                  <td className={TD}>
-                    <SourceValue field={view.basic.bizStatus} stacked>{(v) => v}</SourceValue>
-                  </td>
-                  <td className={TD}>
-                    <SourceValue field={view.address} stacked>{(v) => v}</SourceValue>
+                    <SourceValue field={view.address}>{(v) => v}</SourceValue>
                   </td>
                 </tr>
               </tbody>
@@ -72,30 +60,44 @@ export function CompanyDetail({ view, evaluatedAt }: CompanyDetailProps) {
 
       {/* 2) 자격사항 검토 */}
       <Group title="2) 자격사항 검토">
-        <InfoCard title="면허">
-          <SourceValue field={view.licenses}>
-            {(licenses) =>
-              licenses.length === 0 ? (
-                <span className="text-[12pt]">보유 면허 없음</span>
+        <InfoCard title="조달청 업체등록">
+          <SourceValue field={view.procurement}>
+            {({ industries }) =>
+              industries.length === 0 ? (
+                <span className="text-[12pt]">조달청에 등록된 업종 없음</span>
               ) : (
                 <table className={TABLE}>
                   <thead>
                     <tr>
-                      <th scope="col" className={TH}>면허명</th>
-                      <th scope="col" className={TH}>등록번호</th>
-                      <th scope="col" className={TH}>만료일</th>
-                      <th scope="col" className={TH}>남은 일수</th>
+                      <th scope="col" className={TH}>업종</th>
+                      <th scope="col" className={TH}>등록일</th>
+                      <th scope="col" className={TH}>유효기간 만료일</th>
+                      <th scope="col" className={TH}>상태</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {licenses.map((l) => (
-                      <tr key={l.regNo} className={ROW}>
-                        <td className={TD}>{l.name}</td>
-                        <td className={`${TD} whitespace-nowrap tabular-nums`}>{l.regNo}</td>
-                        <td className={`${TD} whitespace-nowrap tabular-nums`}>{l.expiresAt}</td>
+                    {industries.map((i) => (
+                      <tr key={`${i.name}-${i.registeredAt}`} className={ROW}>
                         <td className={TD}>
-                          <ExpiryDays days={daysBetween(evaluatedAt, l.expiresAt)} />
+                          {i.name}
+                          {i.representative && (
+                            <span className="ml-1 rounded bg-blue-100 px-1.5 py-0.5 text-xs text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                              대표
+                            </span>
+                          )}
                         </td>
+                        <td className={`${TD} whitespace-nowrap tabular-nums`}>{i.registeredAt ?? "확인 불가"}</td>
+                        <td className={TD}>
+                          {i.expiresAt ? (
+                            <>
+                              <span className="whitespace-nowrap tabular-nums">{i.expiresAt}</span>{" "}
+                              <ExpiryDays days={daysBetween(evaluatedAt, i.expiresAt)} />
+                            </>
+                          ) : (
+                            <span className="text-zinc-500 dark:text-zinc-400">기한 없음</span>
+                          )}
+                        </td>
+                        <td className={TD}>{i.status ?? "-"}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -104,171 +106,33 @@ export function CompanyDetail({ view, evaluatedAt }: CompanyDetailProps) {
             }
           </SourceValue>
         </InfoCard>
-
-        {/* 조달청 업체등록 · 행정처분 이력은 가로로 나란히 */}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <InfoCard title="조달청 업체등록">
-            <SourceValue field={view.procurement} stacked>
-              {(p) => (
-                <table className={TABLE}>
-                  <thead>
-                    <tr>
-                      <th scope="col" className={TH}>등록 여부</th>
-                      <th scope="col" className={TH}>유효기간 만료일</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr className={ROW}>
-                      <td className={TD}>{p.registered ? "등록됨" : "등록되어 있지 않음"}</td>
-                      <td className={TD}>
-                        {p.expiresAt ? (
-                          <>
-                            <span className="tabular-nums">{p.expiresAt}</span>{" "}
-                            <ExpiryDays days={daysBetween(evaluatedAt, p.expiresAt)} />
-                          </>
-                        ) : (
-                          <span className="text-zinc-500 dark:text-zinc-400">만료일 정보 없음</span>
-                        )}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              )}
-            </SourceValue>
-          </InfoCard>
-
-          <InfoCard title="행정처분 이력">
-            <SourceValue field={view.sanctions} stacked>
-              {(sanctions) =>
-                sanctions.length === 0 ? (
-                  <span className="text-[12pt]">행정처분 이력 없음</span>
-                ) : (
-                  <table className={TABLE}>
-                    <thead>
-                      <tr>
-                        <th scope="col" className={TH}>처분일</th>
-                        <th scope="col" className={TH}>유형</th>
-                        <th scope="col" className={TH}>사유</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sanctions.map((s) => (
-                        <tr key={`${s.date}-${s.type}`} className={ROW}>
-                          <td className={`${TD} whitespace-nowrap tabular-nums`}>{s.date}</td>
-                          <td className={`${TD} font-medium`}>{s.type}</td>
-                          <td className={TD}>{s.reason}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )
-              }
-            </SourceValue>
-          </InfoCard>
-        </div>
-
       </Group>
 
-      {/* 3) 그 외 사항 — 계약 실적 · 신용·재무를 가로로 나란히. 값은 판정에 쓰지 않는다 */}
-      <Group title="3) 그 외 사항">
-        {/* 계약 실적 : 신용·재무 = 2.5 : 1.5 */}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[2.5fr_1.5fr]">
-          <InfoCard title="계약 실적">
-            <SourceValue field={view.contracts} stacked>
-              {(contracts) =>
-                contracts.length === 0 ? (
-                  <span className="text-[12pt]">계약 실적 없음</span>
-                ) : (
-                  <table className={TABLE}>
-                    <thead>
-                      <tr>
-                        <th scope="col" className={TH}>연도</th>
-                        <th scope="col" className={TH}>계약명</th>
-                        <th scope="col" className={TH}>금액</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {contracts.map((c) => (
-                        <tr key={`${c.year}-${c.title}`} className={ROW}>
-                          <td className={`${TD} whitespace-nowrap tabular-nums`}>{c.year}년</td>
-                          <td className={TD}>{c.title}</td>
-                          <td className={`${TD} whitespace-nowrap tabular-nums`}>{million(c.amountKrw)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )
-              }
-            </SourceValue>
-          </InfoCard>
-
-          <InfoCard title="신용·재무">
-            <SourceValue field={view.credit} stacked>
-              {(c) => (
-                <table className={TABLE}>
-                  <thead>
-                    <tr>
-                      <th scope="col" className={TH}>신용 등급</th>
-                      <th scope="col" className={TH}>평가일</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr className={ROW}>
-                      <td className={TD}>{c.grade}</td>
-                      <td className={`${TD} whitespace-nowrap tabular-nums`}>{c.evaluatedAt}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              )}
-            </SourceValue>
-          </InfoCard>
-        </div>
-
-      </Group>
-
-      {/* 출처 — 대분류별로 나누지 않고 화면 맨 아래에 한 번에 모아 보여준다 */}
-      <SourceBox
-        items={[
-          { label: "상호", field: view.basic.companyName },
-          { label: "업종", field: view.basic.bizType },
-          { label: "영업 상태", field: view.basic.bizStatus },
-          { label: "주소지", field: view.address },
-          { label: "면허", field: view.licenses },
-          { label: "조달청 업체등록", field: view.procurement },
-          { label: "행정처분 이력", field: view.sanctions },
-          { label: "계약 실적", field: view.contracts },
-          { label: "신용·재무", field: view.credit },
-        ]}
-        notUsedForJudgment={["주소지", "계약 실적", "신용·재무"]}
-      />
+      {/* 출처 — 화면 맨 아래에 한 번에 모아 보여준다 */}
+      <section
+        aria-label="출처"
+        className="rounded-lg border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900"
+      >
+        <SourceSummary
+          items={[
+            { label: "상호", field: view.basic.companyName },
+            { label: "주소지", field: view.address },
+            { label: "조달청 업체등록", field: view.procurement },
+          ]}
+          notUsedForJudgment={["주소지"]}
+          notAvailable={["면허", "영업 상태", "행정처분 이력", "계약 실적", "신용·재무"]}
+        />
+      </section>
     </div>
   );
 }
 
-/** 대분류 묶음: 큰 제목 + 그 안의 카드들 */
+/** 대분류 묶음: 파란 제목 박스 + 그 안의 카드들 */
 function Group({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section aria-label={title} className="flex flex-col gap-3">
       <h2 className="w-[5cm] rounded-md bg-blue-700 px-3 py-2 text-left text-[14pt] font-bold text-white">{title}</h2>
       {children}
-    </section>
-  );
-}
-
-/** 화면 맨 아래에 놓는 출처 상자 (출처는 이름만 간단히, 그 아래 줄에 판정에 쓰지 않는 항목) */
-function SourceBox({
-  items,
-  notUsedForJudgment,
-}: {
-  items: Parameters<typeof SourceSummary>[0]["items"];
-  notUsedForJudgment: string[];
-}) {
-  return (
-    <section
-      aria-label="출처"
-      className="rounded-lg border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900"
-    >
-      <SourceSummary items={items} notUsedForJudgment={notUsedForJudgment} />
     </section>
   );
 }

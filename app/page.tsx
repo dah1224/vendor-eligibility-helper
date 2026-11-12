@@ -99,12 +99,12 @@ export default function Home() {
     setReason({ phase: "idle" });
   }
 
-  async function handleSearch(name: string, bizNo: string) {
+  async function handleSearch(bizNo: string) {
     const myId = ++searchRequestId.current;
     setSearch({ phase: "loading" });
     clearSelection(); // 새로 조회하면 이전에 고른 업체와 그 상세는 지운다
     try {
-      const res = await fetch(`/api/companies?name=${encodeURIComponent(name)}&bizNo=${encodeURIComponent(bizNo)}`);
+      const res = await fetch(`/api/companies?bizNo=${encodeURIComponent(bizNo)}`);
       const body = await res.json();
       if (myId !== searchRequestId.current) return;
       if (!res.ok) {
@@ -113,8 +113,8 @@ export default function Home() {
         return;
       }
       const results: SearchResultItem[] = body.results;
-      setSearch({ phase: "done", query: `${name} ${bizNo}`, results });
-      // 1곳이면 목록 없이 바로 그 업체를 조회한다. 0곳·2곳 이상이면 담당자가 고를 때까지 기다린다.
+      setSearch({ phase: "done", query: bizNo, results });
+      // 번호로 찾으므로 결과는 0곳 또는 1곳이다. 1곳이면 바로 그 업체를 조회하고, 0곳이면 안내 문구를 보여준다.
       if (results.length === 1) void loadDetail(results[0].id);
     } catch {
       if (myId !== searchRequestId.current) return;
@@ -130,7 +130,7 @@ export default function Home() {
           <div className="flex items-center justify-between gap-4">
             <h1 className="text-xl font-bold tracking-tight">수의계약 적격업체 평가 도우미</h1>
             <span className="rounded-full border border-zinc-300 px-3 py-1 text-xs text-zinc-600 dark:border-zinc-600 dark:text-zinc-300">
-              대외비 · 샘플 데이터
+              대외비 · 조달청 조회
             </span>
           </div>
           <Disclaimer variant="banner" />
@@ -138,7 +138,7 @@ export default function Home() {
       </header>
 
       <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-6 py-6">
-        {/* ② 검색 영역: 업체명 + 사업자등록번호 입력(둘 다 필수) + 조회 버튼 */}
+        {/* ② 검색 영역: 사업자등록번호 입력 + 조회 버튼 */}
         <section aria-label="검색" className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
           <div className="flex flex-wrap items-start gap-6">
             <SearchBar
@@ -173,7 +173,7 @@ export default function Home() {
               />
             ) : (
               <div className="rounded-lg border border-dashed border-zinc-300 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900">
-                <h2 className="mb-1 text-base font-semibold">조회 항목 7개</h2>
+                <h2 className="mb-1 text-base font-semibold">조회 항목</h2>
                 {detail.phase === "loading" ? (
                   <p className="text-sm text-zinc-500 dark:text-zinc-400" role="status">
                     조회 항목을 불러오는 중입니다…
@@ -184,7 +184,7 @@ export default function Home() {
                   </p>
                 ) : (
                   <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                    업체를 조회하면 기본정보, 주소지, 면허, 조달청 업체등록, 계약 실적, 신용·재무, 행정처분 이력이 이곳에 표시됩니다.
+                    사업자등록번호로 조회하면 조달청에서 가져온 기본정보와 조달청 업체등록 정보가 이곳에 표시됩니다.
                   </p>
                 )}
               </div>
@@ -208,7 +208,7 @@ export default function Home() {
       {/* ⑥ 바닥글 */}
       <footer className="border-t border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
         <p className="mx-auto w-full max-w-6xl px-6 py-3 text-xs text-zinc-500 dark:text-zinc-400">
-          실제 KISCON·조달청과 연결되지 않은 가상 샘플 데이터입니다.
+          조달청 나라장터에서 가져온 정보이며, 조달청에서 제공하지 않는 항목(면허·영업 상태·행정처분·계약 실적·신용·재무)은 표시하지 않습니다.
         </p>
       </footer>
     </div>

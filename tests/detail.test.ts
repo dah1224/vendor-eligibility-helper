@@ -1,72 +1,83 @@
-// Design Ref: §12.2 A5~A6 — 상세 조회 + 판정 (API가 쓰는 getCompanyDetail)
-import { describe, expect, it } from "vitest";
-import { todayString } from "../lib/data/dates";
+// Design Ref: §12.2 A5~A6 — 상세 조회 + 판정 (API가 쓰는 getCompanyDetail, 조달청 정보 기준)
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getCompanyDetail } from "../lib/detail";
+import { clearPpsCache } from "../lib/pps";
+import { TODAY, mockPpsResponse } from "./helpers/pps-mock";
 
-const TODAY = todayString();
+beforeEach(() => {
+  clearPpsCache();
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => mockPpsResponse(url) ?? new Response("{}", { status: 404 })));
+  vi.stubEnv("NARAMARKET_API_KEY", "test-pps-key-not-real");
+  vi.spyOn(console, "error").mockImplementation(() => {});
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
+});
 
 describe("getCompanyDetail", () => {
-  it("c06(폐업)은 부적격 판정과 사유를 돌려준다 (A5)", () => {
-    const r = getCompanyDetail("c06", TODAY);
+  it("모든 업종 유효기간이 지난 업체는 부적격 판정과 사유를 돌려준다", async () => {
+    const r = await getCompanyDetail("1000000002", TODAY);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.judgment.verdict).toBe("부적격");
-    expect(r.judgment.disqualifiers).toContain("폐업한 업체입니다.");
+    expect(r.judgment.disqualifiers[0]).toContain("유효기간이 모두 지났습니다");
     expect(r.judgment.evaluatedAt).toBe(TODAY);
   });
 
-  it("조회 항목 7개가 모두 들어 있다 (Plan SC-2)", () => {
-    const r = getCompanyDetail("c01", TODAY);
+  it("하이픈이 있는 번호도 같은 업체를 찾는다", async () => {
+    const r = await getCompanyDetail("100-00-00001", TODAY);
+    expect(r.ok).toBe(true);
+  });
+
+  it("조회 항목(기본정보·주소지·조달청 업체등록)이 들어 있고 출처는 조달청이다", async () => {
+    const r = await getCompanyDetail("1000000001", TODAY);
     if (!r.ok) throw new Error("실패");
     const v = r.company;
-    expect(v.bizNo).toBe("000-00-00001");
-    for (const key of ["basic", "address", "licenses", "procurement", "contracts", "credit", "sanctions"] as const) {
-      expect(v[key]).toBeDefined();
+    expect(v.bizNo).toBe("100-00-00001");
+    expect(v.basic.companyName).toMatchObject({ kind: "value", value: "가람시설관리(가상)" });
+    expect(v.address).toMatchObject({ kind: "value", value: "서울특별시 강남구" });
+    expect(v.procurement.kind).toBe("value");
+    if (v.procurement.kind === "value") {
+      expect(v.procurement.value.industries).toHaveLength(2);
+      expect(v.procurement.source).toEqual({ source: "PPS", label: "조달청", baseDate: TODAY });
     }
   });
 
-  it("값이 없는 항목은 '확인 불가'(unknown)로 나온다 — c09 신용·재무", () => {
-    const r = getCompanyDetail("c09", TODAY);
+  it("업종 조회만 실패하면 '확인 불가'로 나오고 검토 필요", async () => {
+    const r = await getCompanyDetail("1000000005", TODAY);
     if (!r.ok) throw new Error("실패");
-    expect(r.company.credit.kind).toBe("unknown");
+    expect(r.company.procurement.kind).toBe("unknown");
+    expect(r.judgment.verdict).toBe("검토 필요");
   });
 
-  it("출처가 다른 항목은 두 값이 나란히 나온다 — c10 주소지", () => {
-    const r = getCompanyDetail("c10", TODAY);
-    if (!r.ok) throw new Error("실패");
-    const address = r.company.address;
-    expect(address.kind).toBe("conflict");
-    if (address.kind === "conflict") {
-      expect(address.values.map((x) => x.value)).toEqual(["서울특별시 강남구", "서울특별시 서초구"]);
-    }
-  });
-
-  it("항목마다 출처와 기준일이 붙는다 (PRD)", () => {
-    const r = getCompanyDetail("c01", TODAY);
-    if (!r.ok) throw new Error("실패");
-    const f = r.company.basic.companyName;
-    expect(f.kind).toBe("value");
-    if (f.kind === "value") {
-      expect(f.source.label).toBe("출처: 샘플(KISCON 형식)");
-      expect(f.source.baseDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    }
-  });
-
-  it("없는 업체는 404 + PRD 안내 문구", () => {
-    expect(getCompanyDetail("zzz", TODAY)).toEqual({
+  it("조달청에 없는 업체는 404 + PRD 안내 문구", async () => {
+    expect(await getCompanyDetail("1999999999", TODAY)).toEqual({
       ok: false,
       status: 404,
       code: "NOT_FOUND",
-      message: "일치하는 업체가 없습니다. 업체명이나 사업자등록번호를 확인해 주세요.",
+      message: "일치하는 업체가 없습니다. 사업자등록번호를 확인해 주세요.",
     });
   });
 
-  it("응답에 원본 레코드 전체나 개인정보성 값이 새지 않는다", () => {
-    const r = getCompanyDetail("c01", TODAY);
+  it("번호 모양이 아니면 조달청을 부르지 않고 404", async () => {
+    const fetchSpy = vi.mocked(fetch);
+    const r = await getCompanyDetail("c01", TODAY);
+    expect(r).toMatchObject({ ok: false, status: 404, code: "NOT_FOUND" });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("조달청 조회가 실패하면 502 (없는 업체와 구분)", async () => {
+    expect(await getCompanyDetail("1000000006", TODAY)).toMatchObject({ ok: false, status: 502, code: "PPS_FAILED" });
+  });
+
+  it("응답에 원본 레코드나 개인정보성 값이 새지 않는다", async () => {
+    const r = await getCompanyDetail("1000000001", TODAY);
     if (!r.ok) throw new Error("실패");
     const text = JSON.stringify(r);
-    expect(text).not.toContain("kiscon");
-    expect(text).not.toContain("telNo");
-    expect(text).not.toContain("ceoNm");
+    for (const leaked of ["홍길동", "010-0000-0000", "비밀 상세주소", "ceoNm", "telNo", "dtlAdrs"]) {
+      expect(text).not.toContain(leaked);
+    }
   });
 });
