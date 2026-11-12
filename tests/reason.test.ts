@@ -188,6 +188,23 @@ describe("buildUserMessage", () => {
   });
 });
 
+describe("호출 횟수 제한 — 강화", () => {
+  it("접속자 키를 대량으로 만들어도 저장 개수에 상한이 있고 새 접속자는 계속 허용된다", () => {
+    const rl = createRateLimiter(1, 60_000);
+    for (let i = 0; i < 20_000; i++) expect(rl.allow(`ip-${i}`, 1000)).toBe(true);
+  });
+  it("하루 상한을 넘으면 OpenAI를 부르지 않고 실패로 처리한다", async () => {
+    fetchMock.mockResolvedValue(okResponse("문장입니다."));
+    const { aiDailyLimiter, GLOBAL_KEY } = await import("../lib/rateLimit");
+    // 남은 한도를 모두 소진시킨다 (이 파일의 마지막 AI 시험이어야 한다 — 이후에는 한도가 비어 있다)
+    while (aiDailyLimiter.allow(GLOBAL_KEY));
+    fetchMock.mockClear();
+    const r = await generateReason("c06", L, TODAY);
+    expect(r).toMatchObject({ ok: false, status: 502, code: "AI_FAILED", message: AI_FAILED_MESSAGE });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
 describe("호출 횟수 제한 (분당 10회)", () => {
   it("한도까지는 허용하고 넘으면 막는다", () => {
     const rl = createRateLimiter(10, 60_000);

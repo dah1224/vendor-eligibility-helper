@@ -7,6 +7,7 @@ import "server-only";
 
 import { getCompanyDetail } from "./detail";
 import { AI_FAILED_MESSAGE } from "./messages";
+import { GLOBAL_KEY, aiDailyLimiter } from "./rateLimit";
 import type { CompanyView, Judgment } from "./types";
 
 /** AI 응답 최대 길이 (Design §7.3) */
@@ -128,6 +129,12 @@ export async function generateReason(
   const cacheKey = `${id}|${judgment.selectedLicense}|${judgment.evaluatedAt}|${judgment.verdict}`;
   const cached = reasonCache.get(cacheKey);
   if (cached) return { ok: true, text: cached, source: "ai" };
+
+  // 하루 호출 상한 — 넘으면 OpenAI를 부르지 않고 실패로 처리한다 (판정은 그대로, 비용만 막는다)
+  if (!aiDailyLimiter.allow(GLOBAL_KEY)) {
+    console.error("[reason] 하루 AI 호출 상한에 도달했습니다.");
+    return aiFailed();
+  }
 
   // 4) AI 호출 (키는 서버 환경변수에서만 읽는다)
   const apiKey = process.env.OPENAI_API_KEY;

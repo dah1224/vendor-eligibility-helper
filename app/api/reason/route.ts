@@ -2,7 +2,7 @@
 // 요청: { id, license } (판정·사유 문장은 받지 않는다 — 서버가 다시 계산한다)
 // 200: { text } / 400: INVALID_REQUEST·INVALID_LICENSE / 404: NOT_FOUND / 429: RATE_LIMITED / 502: AI_FAILED
 import type { NextRequest } from "next/server";
-import { reasonRateLimiter } from "@/lib/rateLimit";
+import { GLOBAL_KEY, reasonGlobalLimiter, reasonRateLimiter } from "@/lib/rateLimit";
 import { generateReason } from "@/lib/reason";
 
 const MAX_ID_LENGTH = 10;
@@ -17,7 +17,8 @@ function clientKey(request: NextRequest): string {
 }
 
 export async function POST(request: NextRequest) {
-  if (!reasonRateLimiter.allow(clientKey(request))) {
+  // 전체 합계 → 접속자별 순서로 검사한다 (접속자 구분이 위조되어도 전체 호출량은 제한된다)
+  if (!reasonGlobalLimiter.allow(GLOBAL_KEY) || !reasonRateLimiter.allow(clientKey(request))) {
     return errorResponse(429, "RATE_LIMITED", "요청이 너무 많습니다. 잠시 뒤 다시 시도해 주세요.");
   }
 

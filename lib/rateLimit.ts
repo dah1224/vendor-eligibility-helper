@@ -13,6 +13,9 @@ export interface RateLimiter {
   allow(key: string, now?: number): boolean;
 }
 
+/** 한 제한기가 기억하는 접속자 수의 상한 — 가짜 접속자 키를 대량으로 보내도 메모리가 무한히 늘지 않게 한다 */
+const MAX_BUCKETS = 5000;
+
 export function createRateLimiter(limit: number, windowMs: number): RateLimiter {
   const buckets = new Map<string, Bucket>();
   return {
@@ -20,6 +23,10 @@ export function createRateLimiter(limit: number, windowMs: number): RateLimiter 
       // 오래된 항목 정리 (메모리가 계속 늘지 않게)
       if (buckets.size > 1000) {
         for (const [k, b] of buckets) if (now - b.windowStart >= windowMs) buckets.delete(k);
+      }
+      // 정리 후에도 상한을 넘으면 가장 먼저 들어온 항목부터 지운다
+      while (buckets.size >= MAX_BUCKETS && !buckets.has(key)) {
+        buckets.delete(buckets.keys().next().value as string);
       }
       const bucket = buckets.get(key);
       if (!bucket || now - bucket.windowStart >= windowMs) {
@@ -35,3 +42,17 @@ export function createRateLimiter(limit: number, windowMs: number): RateLimiter 
 
 /** AI 사유 API용: 접속자당 분당 10회 */
 export const reasonRateLimiter = createRateLimiter(10, 60_000);
+
+/**
+ * AI 사유 API용: 접속자와 상관없이 서버 전체 합계 제한 (분당 60회).
+ * 접속자 구분용 헤더를 바꿔 가며 보내거나 헤더가 없는 경우에도 전체 호출량에는 위쪽이 막혀 있게 한다.
+ */
+export const reasonGlobalLimiter = createRateLimiter(60, 60_000);
+export const GLOBAL_KEY = "all";
+
+/**
+ * 실제 OpenAI 호출(저장된 결과를 못 쓴 경우)의 하루 상한 — 어떤 경우에도 하루 요금에 위쪽 한계를 둔다.
+ * 샘플 조합이 업체 10 × 면허 5 정도라 평소에는 이 한도에 닿지 않는다.
+ */
+export const DAILY_AI_CALL_LIMIT = 300;
+export const aiDailyLimiter = createRateLimiter(DAILY_AI_CALL_LIMIT, 24 * 60 * 60_000);
