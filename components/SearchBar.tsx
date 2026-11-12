@@ -1,7 +1,7 @@
 "use client";
 
 // Design Ref: §3.2 SearchBar — 업체명 + 사업자등록번호 입력 + 조회 버튼
-// 같은 이름의 업체가 있어도 헷갈리지 않도록 **업체명과 사업자등록번호를 둘 다** 입력해야 조회할 수 있다.
+// 업체명이나 사업자등록번호 중 하나만 입력해도 조회할 수 있다. 같은 이름의 업체가 있으면 번호를 함께 입력해 가린다.
 // PRD: 사업자등록번호는 하이픈 유무와 관계없이 똑같이 인식하고, 숫자가 10자리가 아니면 검색하지 않고 바로 형식 오류를 알린다.
 // 번호 검사는 브라우저에서 먼저 한다(서버 호출 없이 즉시). 서버도 같은 함수로 한 번 더 검사한다.
 import { useState, type FormEvent } from "react";
@@ -24,14 +24,15 @@ export function SearchBar({ loading, onSearch, onInvalid }: SearchBarProps) {
   const [bizNo, setBizNo] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  // 둘 다 입력해야 조회할 수 있다
-  const canSubmit = name.trim() !== "" && bizNo.trim() !== "" && !loading;
+  // 하나 이상 입력해야 조회할 수 있다
+  const canSubmit = (name.trim() !== "" || bizNo.trim() !== "") && !loading;
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!canSubmit) return;
 
-    if (normalizeBizNo(bizNo) === null) {
+    // 번호를 입력했다면 10자리여야 한다 (비워 두면 업체명만으로 조회)
+    if (bizNo.trim() !== "" && normalizeBizNo(bizNo) === null) {
       setError(BIZ_NO_FORMAT_ERROR); // 형식 오류: 서버를 부르지 않는다
       onInvalid?.();
       return;
@@ -88,7 +89,7 @@ export function SearchBar({ loading, onSearch, onInvalid }: SearchBarProps) {
         </button>
       </div>
       <p className="text-xs text-zinc-500 dark:text-zinc-400">
-        업체명과 사업자등록번호를 모두 입력해야 조회할 수 있습니다.
+        업체명이나 사업자등록번호 중 하나만 입력해도 조회할 수 있습니다. 둘 다 입력하면 둘 다 맞는 업체를 찾습니다.
       </p>
       {error && (
         <p id="search-error" role="alert" className="text-xs font-medium text-red-700 dark:text-red-400">
