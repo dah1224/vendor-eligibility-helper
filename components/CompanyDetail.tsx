@@ -249,7 +249,7 @@ export function CompanyDetail({ view, evaluatedAt }: CompanyDetailProps) {
 function Group({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section aria-label={title} className="flex flex-col gap-3">
-      <h2 className="rounded-md bg-blue-700 px-3 py-2 text-left text-[14pt] font-bold text-white">{title}</h2>
+      <h2 className="w-[5cm] rounded-md bg-blue-700 px-3 py-2 text-left text-[14pt] font-bold text-white">{title}</h2>
       {children}
     </section>
   );
