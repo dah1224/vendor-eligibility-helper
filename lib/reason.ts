@@ -15,6 +15,17 @@ export const MAX_REASON_LENGTH = 400;
 export const AI_TIMEOUT_MS = 10_000;
 const DEFAULT_MODEL = "gpt-4.1-mini";
 
+/**
+ * AI 결과 재사용 저장소 (CHECK.md A-1): 같은 (업체, 면허, 판정 기준일, 판정)이면 OpenAI를 다시 부르지 않는다.
+ * 조합 수가 작아(업체 10 × 면허 5 × 날짜) 반복 호출로 요금이 쌓이는 것을 막는다. 성공한 AI 결과만 저장한다.
+ * 서버리스에서는 인스턴스마다 따로라 완전하진 않으므로 OpenAI 사용 한도·Vercel 호출 제한을 함께 쓴다.
+ */
+const MAX_CACHE_ENTRIES = 500;
+const reasonCache = new Map<string, string>();
+export function clearReasonCache(): void {
+  reasonCache.clear();
+}
+
 /** 적격이면 정리할 사유가 없으므로 AI를 부르지 않고 이 문장을 쓴다 */
 export const NO_ISSUE_TEXT = "부적격 또는 검토 필요에 해당하는 조건이 없습니다.";
 
@@ -113,7 +124,12 @@ export async function generateReason(
     return { ok: true, text: NO_ISSUE_TEXT, source: "fixed" };
   }
 
-  // 3) AI 호출 (키는 서버 환경변수에서만 읽는다)
+  // 3) 같은 조합의 AI 결과가 이미 있으면 재사용한다 (판정이 같으므로 사유도 같다)
+  const cacheKey = `${id}|${judgment.selectedLicense}|${judgment.evaluatedAt}|${judgment.verdict}`;
+  const cached = reasonCache.get(cacheKey);
+  if (cached) return { ok: true, text: cached, source: "ai" };
+
+  // 4) AI 호출 (키는 서버 환경변수에서만 읽는다)
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     console.error("[reason] OPENAI_API_KEY가 설정되어 있지 않습니다.");
@@ -149,6 +165,8 @@ export async function generateReason(
       console.error("[reason] AI 응답이 비었거나 점검을 통과하지 못했습니다.");
       return aiFailed();
     }
+    if (reasonCache.size >= MAX_CACHE_ENTRIES) reasonCache.delete(reasonCache.keys().next().value as string);
+    reasonCache.set(cacheKey, text);
     return { ok: true, text, source: "ai" };
   } catch (error) {
     // 시간 초과·네트워크 오류. 메시지에 주소나 키가 섞일 수 있어 종류만 기록한다

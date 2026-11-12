@@ -8,6 +8,7 @@ import {
   NO_ISSUE_TEXT,
   buildUserMessage,
   checkAiText,
+  clearReasonCache,
   generateReason,
 } from "../lib/reason";
 import { COMPANIES } from "../lib/data/companies";
@@ -24,6 +25,7 @@ const okResponse = (content: unknown) =>
 let fetchMock: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
+  clearReasonCache();
   fetchMock = vi.fn();
   vi.stubGlobal("fetch", fetchMock);
   vi.stubEnv("OPENAI_API_KEY", "test-key-not-real");
@@ -72,6 +74,28 @@ describe("generateReason — 성공", () => {
     fetchMock.mockResolvedValue(okResponse("문장입니다."));
     await generateReason("c06", L, TODAY);
     expect(JSON.parse(fetchMock.mock.calls[0][1].body).model).toBe("my-test-model");
+  });
+});
+
+describe("generateReason — 결과 재사용 (비용 남용 방지)", () => {
+  it("같은 업체·면허·날짜는 두 번째부터 OpenAI를 부르지 않는다", async () => {
+    fetchMock.mockResolvedValue(okResponse("정리된 문장입니다."));
+    const a = await generateReason("c06", L, TODAY);
+    const b = await generateReason("c06", L, TODAY);
+    expect(a).toEqual(b);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+  it("업체가 다르면 새로 부른다", async () => {
+    fetchMock.mockResolvedValue(okResponse("정리된 문장입니다."));
+    await generateReason("c06", L, TODAY);
+    await generateReason("c05", L, TODAY);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+  it("실패한 결과는 저장하지 않아 다시 시도할 수 있다", async () => {
+    fetchMock.mockResolvedValueOnce(new Response("{}", { status: 500 }));
+    expect((await generateReason("c06", L, TODAY)).ok).toBe(false);
+    fetchMock.mockResolvedValueOnce(okResponse("두 번째는 성공입니다."));
+    expect(await generateReason("c06", L, TODAY)).toMatchObject({ ok: true, text: "두 번째는 성공입니다." });
   });
 });
 

@@ -1,0 +1,5 @@
+.env*
+.bkit
+trash-can
+node_modules
+.next
