@@ -1,16 +1,14 @@
 // Design Ref: §3 화면 구성 — 한 화면(PC 브라우저, 가로 1280px 이상 기준). 위에서 아래로 "고르고 → 찾고 → 보고 → 판단 확인".
-// 작업 9: 뼈대. 작업 10: 면허 선택. 작업 11: 검색창·조회 버튼, 검색 API 호출. 작업 12: 결과 분기(0건 안내 / 목록에서 선택 / 1곳은 바로 선택).
+// 작업 9: 뼈대. 작업 11: 검색창·조회 버튼, 검색 API 호출. 작업 12: 결과 분기(0건 안내 / 목록에서 선택 / 1곳은 바로 선택).
 // 작업 13: 고른 업체의 상세 API를 불러 ④조회 항목 7개를 카드로 표시. 작업 15: ⑤판정 패널에 서버가 정한 판정과 사유를 표시. 작업 16·17: AI가 정리한 사유 문장을 따로 불러오고, 실패해도 조회·판정은 그대로 둔다.
 "use client";
 
 import { useRef, useState } from "react";
 import { CompanyDetail } from "@/components/CompanyDetail";
 import { Disclaimer } from "@/components/Disclaimer";
-import { LicenseSelect, type LicenseChoice } from "@/components/LicenseSelect";
 import { SearchBar } from "@/components/SearchBar";
 import { SearchResultList } from "@/components/SearchResultList";
 import { VerdictPanel, type ReasonState } from "@/components/VerdictPanel";
-import { LICENSE_REQUIRED_MESSAGE } from "@/lib/data/licenses";
 import { AI_FAILED_MESSAGE } from "@/lib/messages";
 import type { SearchResultItem } from "@/lib/search";
 import type { CompanyView, Judgment } from "@/lib/types";
@@ -32,8 +30,6 @@ type DetailState =
 const SERVER_ERROR_MESSAGE = "조회 중 문제가 생겼습니다. 잠시 뒤 다시 시도해 주세요.";
 
 export default function Home() {
-  // 고른 면허. 고르기 전에는 "" — 이 값이 있어야 조회할 수 있다
-  const [license, setLicense] = useState<LicenseChoice>("");
   const [search, setSearch] = useState<SearchState>({ phase: "idle" });
   const [detail, setDetail] = useState<DetailState>({ phase: "idle" });
   // AI가 정리한 판단 사유 — 조회·판정과 따로 불러오므로 실패해도 위 상태는 그대로다
@@ -44,18 +40,16 @@ export default function Home() {
   const searchRequestId = useRef(0);
   const detailRequestId = useRef(0);
   const reasonRequestId = useRef(0);
-  // 응답을 기다리는 사이 면허가 바뀌어도 가장 최근 값을 쓰기 위해 함께 들고 있는다
-  const licenseRef = useRef<LicenseChoice>("");
 
   /** 선택한 업체의 AI 판단 사유 문장을 불러온다. 실패하면 정해진 문구를 보여줄 뿐 조회 정보·판정은 건드리지 않는다. */
-  async function loadReason(id: string, chosen: string) {
+  async function loadReason(id: string) {
     const myId = ++reasonRequestId.current;
     setReason({ phase: "loading" });
     try {
       const res = await fetch("/api/reason", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, license: chosen }),
+        body: JSON.stringify({ id }),
       });
       const body = await res.json();
       if (myId !== reasonRequestId.current) return;
@@ -72,26 +66,15 @@ export default function Home() {
     }
   }
 
-  /** 선택한 업체의 조회 항목과 판정을 불러온다 (판정은 서버가 고른 면허로 한다) */
+  /** 선택한 업체의 조회 항목과 판정을 불러온다 */
   async function loadDetail(id: string) {
-    const chosen = licenseRef.current;
-    if (chosen === "") {
-      // 면허를 고르지 않고 [선택]을 누른 경우: 말없이 무시하지 않고 안내한다.
-      // 고른 업체는 기억해 두므로, 면허를 고르면 handleLicenseChange가 바로 이어서 조회한다.
-      detailRequestId.current++;
-      reasonRequestId.current++;
-      setSelectedId(id);
-      setDetail({ phase: "error", message: LICENSE_REQUIRED_MESSAGE });
-      setReason({ phase: "idle" });
-      return;
-    }
     const myId = ++detailRequestId.current;
     setSelectedId(id);
     setDetail({ phase: "loading" });
     reasonRequestId.current++; // 이전 업체의 AI 문장이 늦게 도착해도 무시한다
     setReason({ phase: "idle" });
     try {
-      const res = await fetch(`/api/companies/${encodeURIComponent(id)}?license=${encodeURIComponent(chosen)}`);
+      const res = await fetch(`/api/companies/${encodeURIComponent(id)}`);
       const body = await res.json();
       if (myId !== detailRequestId.current) return;
       if (!res.ok) {
@@ -100,14 +83,14 @@ export default function Home() {
       }
       setDetail({ phase: "done", company: body.company, judgment: body.judgment });
       // 적격이면 정리할 사유가 없어 AI를 부르지 않는다. 부적격·검토 필요일 때만 사유 문장을 요청한다.
-      if (body.judgment.verdict !== "적격") void loadReason(id, chosen);
+      if (body.judgment.verdict !== "적격") void loadReason(id);
     } catch {
       if (myId !== detailRequestId.current) return;
       setDetail({ phase: "error", message: SERVER_ERROR_MESSAGE });
     }
   }
 
-  /** 업체 선택·상세 화면을 비운다 (새 검색, 형식 오류, 면허 해제 때) */
+  /** 업체 선택·상세 화면을 비운다 (새 검색, 형식 오류 때) */
   function clearSelection() {
     detailRequestId.current++; // 아직 오는 중인 상세 응답은 무시한다
     reasonRequestId.current++;
@@ -116,12 +99,12 @@ export default function Home() {
     setReason({ phase: "idle" });
   }
 
-  async function handleSearch(query: string) {
+  async function handleSearch(name: string, bizNo: string) {
     const myId = ++searchRequestId.current;
     setSearch({ phase: "loading" });
     clearSelection(); // 새로 조회하면 이전에 고른 업체와 그 상세는 지운다
     try {
-      const res = await fetch(`/api/companies?q=${encodeURIComponent(query)}`);
+      const res = await fetch(`/api/companies?name=${encodeURIComponent(name)}&bizNo=${encodeURIComponent(bizNo)}`);
       const body = await res.json();
       if (myId !== searchRequestId.current) return;
       if (!res.ok) {
@@ -130,23 +113,12 @@ export default function Home() {
         return;
       }
       const results: SearchResultItem[] = body.results;
-      setSearch({ phase: "done", query, results });
+      setSearch({ phase: "done", query: `${name} ${bizNo}`, results });
       // 1곳이면 목록 없이 바로 그 업체를 조회한다. 0곳·2곳 이상이면 담당자가 고를 때까지 기다린다.
       if (results.length === 1) void loadDetail(results[0].id);
     } catch {
       if (myId !== searchRequestId.current) return;
       setSearch({ phase: "error", message: SERVER_ERROR_MESSAGE });
-    }
-  }
-
-  /** 면허를 바꾸면, 이미 조회한 업체가 있을 때 새 면허 기준으로 다시 조회·판정한다 */
-  function handleLicenseChange(next: LicenseChoice) {
-    setLicense(next);
-    licenseRef.current = next;
-    if (next === "") {
-      clearSelection();
-    } else if (selectedId) {
-      void loadDetail(selectedId);
     }
   }
 
@@ -166,12 +138,10 @@ export default function Home() {
       </header>
 
       <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-6 py-6">
-        {/* ② 검색 영역: 필요 면허 선택 + 업체명/사업자등록번호 입력 + 조회 버튼 */}
+        {/* ② 검색 영역: 업체명 + 사업자등록번호 입력(둘 다 필수) + 조회 버튼 */}
         <section aria-label="검색" className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
           <div className="flex flex-wrap items-start gap-6">
-            <LicenseSelect value={license} onChange={handleLicenseChange} />
             <SearchBar
-              licenseChosen={license !== ""}
               loading={search.phase === "loading"}
               onSearch={handleSearch}
               onInvalid={() => {
@@ -196,10 +166,9 @@ export default function Home() {
         {/* ④ 조회 항목 7개(왼쪽) + ⑤ 적격 판단 결과(오른쪽) */}
         <div className="grid flex-1 items-start gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
           <section aria-label="조회 항목" className="flex flex-col gap-3">
-            {detail.phase === "done" && license !== "" ? (
+            {detail.phase === "done" ? (
               <CompanyDetail
                 view={detail.company}
-                selectedLicense={license}
                 evaluatedAt={detail.judgment.evaluatedAt}
               />
             ) : (
@@ -225,7 +194,7 @@ export default function Home() {
           <VerdictPanel
             reason={reason}
             onRetryReason={() => {
-              if (selectedId && licenseRef.current !== "") void loadReason(selectedId, licenseRef.current);
+              if (selectedId) void loadReason(selectedId);
             }}
             state={
               detail.phase === "done"

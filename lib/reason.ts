@@ -17,8 +17,8 @@ export const AI_TIMEOUT_MS = 10_000;
 const DEFAULT_MODEL = "gpt-4.1-mini";
 
 /**
- * AI 결과 재사용 저장소 (CHECK.md A-1): 같은 (업체, 면허, 판정 기준일, 판정)이면 OpenAI를 다시 부르지 않는다.
- * 조합 수가 작아(업체 10 × 면허 5 × 날짜) 반복 호출로 요금이 쌓이는 것을 막는다. 성공한 AI 결과만 저장한다.
+ * AI 결과 재사용 저장소 (CHECK.md A-1): 같은 (업체, 판정 기준일, 판정)이면 OpenAI를 다시 부르지 않는다.
+ * 조합 수가 작아(업체 10 × 날짜) 반복 호출로 요금이 쌓이는 것을 막는다. 성공한 AI 결과만 저장한다.
  * 서버리스에서는 인스턴스마다 따로라 완전하진 않으므로 OpenAI 사용 한도·Vercel 호출 제한을 함께 쓴다.
  */
 const MAX_CACHE_ENTRIES = 500;
@@ -34,8 +34,8 @@ export type ReasonOutcome =
   | { ok: true; text: string; source: "ai" | "fixed" }
   | {
       ok: false;
-      status: 400 | 404 | 502;
-      code: "INVALID_LICENSE" | "NOT_FOUND" | "AI_FAILED";
+      status: 404 | 502;
+      code: "NOT_FOUND" | "AI_FAILED";
       message: string;
     };
 
@@ -65,7 +65,6 @@ export function buildUserMessage(company: CompanyView, judgment: Judgment): stri
   return JSON.stringify(
     {
       업체명: companyLabel(company),
-      선택한_면허: judgment.selectedLicense,
       판정: judgment.verdict,
       부적격_사유: judgment.disqualifiers,
       검토_필요_사유: judgment.reviewItems,
@@ -105,16 +104,14 @@ const aiFailed = (): ReasonOutcome => ({
 
 /**
  * @param id 업체 id
- * @param license 담당자가 고른 면허
  * @param today 판정 기준일 (테스트에서 고정할 수 있다)
  */
 export async function generateReason(
   id: string,
-  license: string | null,
   today?: string,
 ): Promise<ReasonOutcome> {
   // 1) 서버가 직접 조회·판정한다 (면허·업체가 올바른지 검사도 여기서)
-  const detail = getCompanyDetail(id, license, today);
+  const detail = getCompanyDetail(id, today);
   if (!detail.ok) {
     return { ok: false, status: detail.status, code: detail.code, message: detail.message };
   }
@@ -126,7 +123,7 @@ export async function generateReason(
   }
 
   // 3) 같은 조합의 AI 결과가 이미 있으면 재사용한다 (판정이 같으므로 사유도 같다)
-  const cacheKey = `${id}|${judgment.selectedLicense}|${judgment.evaluatedAt}|${judgment.verdict}`;
+  const cacheKey = `${id}|${judgment.evaluatedAt}|${judgment.verdict}`;
   const cached = reasonCache.get(cacheKey);
   if (cached) return { ok: true, text: cached, source: "ai" };
 

@@ -1,11 +1,12 @@
-// Design Ref: §7.1 — GET /api/companies?q={검색어} : 업체 검색
+// Design Ref: §7.1 — GET /api/companies?name={업체명}&bizNo={사업자등록번호} : 업체 검색 (둘 다 필수)
 // 200: { results: [...] } (0건이면 빈 배열) / 400: { error: { code, message } }
 import type { NextRequest } from "next/server";
 import { searchCompanies } from "@/lib/search";
 
 export async function GET(request: NextRequest) {
-  const q = request.nextUrl.searchParams.get("q") ?? "";
-  const outcome = searchCompanies(q);
+  const name = request.nextUrl.searchParams.get("name") ?? "";
+  const bizNo = request.nextUrl.searchParams.get("bizNo") ?? "";
+  const outcome = searchCompanies(name, bizNo);
 
   if (!outcome.ok) {
     return Response.json(

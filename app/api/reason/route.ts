@@ -1,6 +1,6 @@
 // Design Ref: §7.3 — POST /api/reason : AI가 정리한 판정 사유 문장
-// 요청: { id, license } (판정·사유 문장은 받지 않는다 — 서버가 다시 계산한다)
-// 200: { text } / 400: INVALID_REQUEST·INVALID_LICENSE / 403: FORBIDDEN_ORIGIN / 404: NOT_FOUND / 415: UNSUPPORTED_MEDIA_TYPE / 429: RATE_LIMITED / 502: AI_FAILED
+// 요청: { id } (판정·사유 문장은 받지 않는다 — 서버가 다시 계산한다)
+// 200: { text } / 400: INVALID_REQUEST / 403: FORBIDDEN_ORIGIN / 404: NOT_FOUND / 415: UNSUPPORTED_MEDIA_TYPE / 429: RATE_LIMITED / 502: AI_FAILED
 import type { NextRequest } from "next/server";
 import { GLOBAL_KEY, reasonGlobalLimiter, reasonRateLimiter } from "@/lib/rateLimit";
 import { generateReason } from "@/lib/reason";
@@ -62,13 +62,13 @@ export async function POST(request: NextRequest) {
     return errorResponse(400, "INVALID_REQUEST", "요청 형식이 올바르지 않습니다.");
   }
 
-  // 허용하는 것은 id(최대 10자)와 license 두 값뿐. 그 밖의 값은 무시한다.
-  const { id, license } = (body ?? {}) as { id?: unknown; license?: unknown };
-  if (typeof id !== "string" || id === "" || id.length > MAX_ID_LENGTH || typeof license !== "string") {
+  // 허용하는 것은 id(최대 10자) 한 값뿐. 그 밖의 값은 무시한다.
+  const { id } = (body ?? {}) as { id?: unknown };
+  if (typeof id !== "string" || id === "" || id.length > MAX_ID_LENGTH) {
     return errorResponse(400, "INVALID_REQUEST", "요청 형식이 올바르지 않습니다.");
   }
 
-  const outcome = await generateReason(id, license);
+  const outcome = await generateReason(id);
   if (!outcome.ok) return errorResponse(outcome.status, outcome.code, outcome.message);
   return Response.json({ text: outcome.text });
 }

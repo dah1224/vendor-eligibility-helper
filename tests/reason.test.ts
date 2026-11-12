@@ -15,7 +15,6 @@ import { COMPANIES } from "../lib/data/companies";
 import { todayString } from "../lib/data/dates";
 import { getCompanyDetail } from "../lib/detail";
 
-const L = "시설물유지관리업";
 const TODAY = todayString();
 
 /** OpenAI 응답 모양을 흉내 낸다 */
@@ -40,7 +39,7 @@ afterEach(() => {
 describe("generateReason — 성공", () => {
   it("부적격 업체(c06)는 AI가 정리한 문장을 돌려준다", async () => {
     fetchMock.mockResolvedValue(okResponse("폐업한 업체라 계약 대상으로 보기 어렵습니다. 최종 결정은 담당자가 합니다."));
-    const r = await generateReason("c06", L, TODAY);
+    const r = await generateReason("c06", TODAY);
     expect(r).toMatchObject({ ok: true, source: "ai" });
     if (r.ok) expect(r.text).toContain("폐업");
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -48,7 +47,7 @@ describe("generateReason — 성공", () => {
 
   it("AI에는 서버가 계산한 판정과 사유만 간다 — 사업자번호·원본 레코드는 안 간다", async () => {
     fetchMock.mockResolvedValue(okResponse("정리된 문장입니다."));
-    await generateReason("c06", L, TODAY);
+    await generateReason("c06", TODAY);
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe("https://api.openai.com/v1/chat/completions");
     const sent = JSON.parse(init.body);
@@ -64,7 +63,7 @@ describe("generateReason — 성공", () => {
   });
 
   it("적격이면 AI를 부르지 않고 고정 문장을 쓴다", async () => {
-    const r = await generateReason("c01", L, TODAY);
+    const r = await generateReason("c01", TODAY);
     expect(r).toEqual({ ok: true, text: NO_ISSUE_TEXT, source: "fixed" });
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -72,7 +71,7 @@ describe("generateReason — 성공", () => {
   it("OPENAI_MODEL로 모델을 바꿀 수 있다", async () => {
     vi.stubEnv("OPENAI_MODEL", "my-test-model");
     fetchMock.mockResolvedValue(okResponse("문장입니다."));
-    await generateReason("c06", L, TODAY);
+    await generateReason("c06", TODAY);
     expect(JSON.parse(fetchMock.mock.calls[0][1].body).model).toBe("my-test-model");
   });
 });
@@ -80,22 +79,22 @@ describe("generateReason — 성공", () => {
 describe("generateReason — 결과 재사용 (비용 남용 방지)", () => {
   it("같은 업체·면허·날짜는 두 번째부터 OpenAI를 부르지 않는다", async () => {
     fetchMock.mockResolvedValue(okResponse("정리된 문장입니다."));
-    const a = await generateReason("c06", L, TODAY);
-    const b = await generateReason("c06", L, TODAY);
+    const a = await generateReason("c06", TODAY);
+    const b = await generateReason("c06", TODAY);
     expect(a).toEqual(b);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
   it("업체가 다르면 새로 부른다", async () => {
     fetchMock.mockResolvedValue(okResponse("정리된 문장입니다."));
-    await generateReason("c06", L, TODAY);
-    await generateReason("c05", L, TODAY);
+    await generateReason("c06", TODAY);
+    await generateReason("c05", TODAY);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
   it("실패한 결과는 저장하지 않아 다시 시도할 수 있다", async () => {
     fetchMock.mockResolvedValueOnce(new Response("{}", { status: 500 }));
-    expect((await generateReason("c06", L, TODAY)).ok).toBe(false);
+    expect((await generateReason("c06", TODAY)).ok).toBe(false);
     fetchMock.mockResolvedValueOnce(okResponse("두 번째는 성공입니다."));
-    expect(await generateReason("c06", L, TODAY)).toMatchObject({ ok: true, text: "두 번째는 성공입니다." });
+    expect(await generateReason("c06", TODAY)).toMatchObject({ ok: true, text: "두 번째는 성공입니다." });
   });
 });
 
@@ -104,49 +103,43 @@ describe("generateReason — 실패하면 정해진 오류 (PRD)", () => {
 
   it("키가 없으면 실패", async () => {
     vi.stubEnv("OPENAI_API_KEY", "");
-    expect(await generateReason("c06", L, TODAY)).toEqual(failed);
+    expect(await generateReason("c06", TODAY)).toEqual(failed);
     expect(fetchMock).not.toHaveBeenCalled();
   });
   it("AI가 오류 코드를 돌려주면 실패 (401·429·500)", async () => {
     for (const status of [401, 429, 500]) {
       fetchMock.mockResolvedValue(new Response("{}", { status }));
-      expect(await generateReason("c06", L, TODAY)).toEqual(failed);
+      expect(await generateReason("c06", TODAY)).toEqual(failed);
     }
   });
   it("네트워크 오류·시간 초과는 실패", async () => {
     fetchMock.mockRejectedValue(new DOMException("timed out", "TimeoutError"));
-    expect(await generateReason("c06", L, TODAY)).toEqual(failed);
+    expect(await generateReason("c06", TODAY)).toEqual(failed);
   });
   it("호출에 10초 제한이 걸려 있다", async () => {
     fetchMock.mockResolvedValue(okResponse("문장입니다."));
-    await generateReason("c06", L, TODAY);
+    await generateReason("c06", TODAY);
     expect(fetchMock.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
   });
   it("응답이 비었거나 형식이 이상하면 실패", async () => {
     for (const content of ["", "   ", null, 123]) {
       fetchMock.mockResolvedValue(okResponse(content));
-      expect(await generateReason("c06", L, TODAY)).toEqual(failed);
+      expect(await generateReason("c06", TODAY)).toEqual(failed);
     }
     fetchMock.mockResolvedValue(new Response("not json", { status: 200 }));
-    expect(await generateReason("c06", L, TODAY)).toEqual(failed);
+    expect(await generateReason("c06", TODAY)).toEqual(failed);
   });
   it("오류 메시지와 로그에 키가 새지 않는다", async () => {
     fetchMock.mockRejectedValue(new Error("fail with test-key-not-real inside"));
-    const r = await generateReason("c06", L, TODAY);
+    const r = await generateReason("c06", TODAY);
     expect(JSON.stringify(r)).not.toContain("test-key-not-real");
     expect(JSON.stringify(vi.mocked(console.error).mock.calls)).not.toContain("test-key-not-real");
   });
 });
 
 describe("generateReason — 요청 검사", () => {
-  it("면허가 없거나 목록에 없으면 400, AI를 부르지 않는다", async () => {
-    for (const license of [null, "", "없는면허"]) {
-      expect(await generateReason("c06", license, TODAY)).toMatchObject({ ok: false, status: 400, code: "INVALID_LICENSE" });
-    }
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
   it("없는 업체는 404, AI를 부르지 않는다", async () => {
-    expect(await generateReason("zzz", L, TODAY)).toMatchObject({ ok: false, status: 404, code: "NOT_FOUND" });
+    expect(await generateReason("zzz", TODAY)).toMatchObject({ ok: false, status: 404, code: "NOT_FOUND" });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
@@ -173,7 +166,7 @@ describe("checkAiText — 응답 점검", () => {
 
 describe("buildUserMessage", () => {
   it("c10(출처 불일치)의 사유가 두 값과 함께 담긴다", () => {
-    const d = getCompanyDetail("c10", L, TODAY);
+    const d = getCompanyDetail("c10", TODAY);
     if (!d.ok) throw new Error("실패");
     const msg = JSON.parse(buildUserMessage(d.company, d.judgment));
     expect(msg.판정).toBe("검토 필요");
@@ -181,7 +174,7 @@ describe("buildUserMessage", () => {
     expect(msg.업체명).toBe("자연건물관리(가상)");
   });
   it("샘플이 아닌 값은 보내지 않는다 (사업자번호 없음)", () => {
-    const d = getCompanyDetail("c06", L, TODAY);
+    const d = getCompanyDetail("c06", TODAY);
     if (!d.ok) throw new Error("실패");
     expect(buildUserMessage(d.company, d.judgment)).not.toMatch(/\d{3}-\d{2}-\d{5}/);
     expect(COMPANIES.length).toBe(10);
@@ -199,7 +192,7 @@ describe("호출 횟수 제한 — 강화", () => {
     // 남은 한도를 모두 소진시킨다 (이 파일의 마지막 AI 시험이어야 한다 — 이후에는 한도가 비어 있다)
     while (aiDailyLimiter.allow(GLOBAL_KEY));
     fetchMock.mockClear();
-    const r = await generateReason("c06", L, TODAY);
+    const r = await generateReason("c06", TODAY);
     expect(r).toMatchObject({ ok: false, status: 502, code: "AI_FAILED", message: AI_FAILED_MESSAGE });
     expect(fetchMock).not.toHaveBeenCalled();
   });

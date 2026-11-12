@@ -1,6 +1,6 @@
 // Design Ref: §6 — 판정은 코드가 한다. 이 파일이 판정 규칙 전부를 맡는다.
-//   부적격 조건 4가지(D1~D4) → findDisqualifiers
-//   검토 필요 조건 4가지(R1~R4) → findReviewItems
+//   부적격 조건 3가지(D2~D4) → findDisqualifiers  (D1 '선택한 면허 없음'은 면허 선택을 없애면서 뺐다)
+//   검토 필요 조건 3가지(R2~R4) → findReviewItems  (R1 '선택한 면허 만료 임박'도 같은 이유로 뺐다)
 //   최종 판정 → judge()  (부적격 > 검토 필요 > 적격 순으로 먼저 해당하는 단계)
 // Design Ref: §10 — 서버에서만 쓴다.
 import "server-only";
@@ -10,7 +10,6 @@ import type {
   CompanyView,
   FieldValue,
   Judgment,
-  LicenseName,
   SourceName,
   Verdict,
 } from "./types";
@@ -18,15 +17,8 @@ import { daysBetween } from "./data/dates";
 import { buildCompanyView } from "./view";
 
 /** 부적격 조건에 해당하는 사유 문장 목록을 돌려준다. 빈 배열이면 부적격 조건이 없다는 뜻. */
-export function findDisqualifiers(
-  company: Company,
-  selectedLicense: LicenseName,
-  today: string,
-): string[] {
+export function findDisqualifiers(company: Company, today: string): string[] {
   const reasons: string[] = [];
-
-  const d1 = checkLicense(company, selectedLicense, today);
-  if (d1) reasons.push(d1);
 
   const d2 = checkProcurement(company, today);
   if (d2) reasons.push(d2);
@@ -38,30 +30,6 @@ export function findDisqualifiers(
   if (d4) reasons.push(d4);
 
   return reasons;
-}
-
-// ───────────── D1: 선택한 면허 없음 ─────────────
-// 면허 목록에 선택 면허가 없거나, 있어도 모두 만료일이 오늘 이전이면 해당.
-// 면허 정보가 "확인 불가"(null)이면 없다고 단정하지 않는다 → 부적격이 아니라 검토 필요(R3)로 간다. (§6.4)
-
-function checkLicense(
-  company: Company,
-  selectedLicense: LicenseName,
-  today: string,
-): string | null {
-  const licenses = company.kiscon?.licenses;
-  if (!licenses) return null;
-
-  const owned = licenses.filter((l) => l.name === selectedLicense);
-  if (owned.length === 0) {
-    return `선택한 면허(${selectedLicense})를 보유하고 있지 않습니다.`;
-  }
-  // 만료일 당일(D-0)은 아직 유효 → 검토 필요(R1)에서 다룬다. 만료일이 오늘보다 앞서야 "지남".
-  if (owned.every((l) => l.expiresAt < today)) {
-    const latest = owned.map((l) => l.expiresAt).sort().at(-1);
-    return `선택한 면허(${selectedLicense})의 유효기간이 지났습니다(만료일 ${latest}).`;
-  }
-  return null;
 }
 
 // ───────────── D2: 조달청 미등록 ─────────────
@@ -119,21 +87,15 @@ function checkBizStatus(company: Company): string | null {
 }
 
 // ───────────────────────────────────────────────────────────
-// 검토 필요 조건 (R1~R4) — 하나라도 해당하면 "검토 필요"
+// 검토 필요 조건 (R2~R4) — 하나라도 해당하면 "검토 필요"
 // ───────────────────────────────────────────────────────────
 
 /** 만료 임박 기준 (일) — PRD: 30일 이내 */
 const EXPIRY_WARNING_DAYS = 30;
 
 /** 검토 필요 사유 문장 목록을 돌려준다. 빈 배열이면 검토 필요 조건이 없다는 뜻. */
-export function findReviewItems(
-  company: Company,
-  view: CompanyView,
-  selectedLicense: LicenseName,
-  today: string,
-): string[] {
+export function findReviewItems(company: Company, view: CompanyView, today: string): string[] {
   return [
-    ...checkLicenseExpiry(company, selectedLicense, today), // R1
     ...checkProcurementExpiry(company, today), // R2
     ...checkUnknownFields(view), // R3 — 7개 항목 전체
     ...checkConflictFields(view), // R4 — 7개 항목 전체
@@ -143,22 +105,6 @@ export function findReviewItems(
 /** 만료까지 남은 일수를 "N일 뒤(날짜)" 문구로 */
 function expiryPhrase(days: number, date: string): string {
   return days === 0 ? `오늘(${date})` : `${days}일 뒤(${date})`;
-}
-
-// R1: 선택한 면허 만료일이 오늘부터 30일 이내 (오늘 만료 포함).
-// 이미 지났으면 D1(부적격)에서 다루므로 여기서는 제외한다.
-function checkLicenseExpiry(
-  company: Company,
-  selectedLicense: LicenseName,
-  today: string,
-): string[] {
-  const owned = company.kiscon?.licenses?.filter((l) => l.name === selectedLicense);
-  if (!owned || owned.length === 0) return [];
-
-  const latest = owned.map((l) => l.expiresAt).sort().at(-1) as string;
-  const days = daysBetween(today, latest);
-  if (days < 0 || days > EXPIRY_WARNING_DAYS) return [];
-  return [`선택한 면허(${selectedLicense})가 ${expiryPhrase(days, latest)} 만료됩니다.`];
 }
 
 // R2: 조달청 업체등록 만료일이 오늘부터 30일 이내 (오늘 만료 포함). 이미 지났으면 D2에서 다룬다.
@@ -219,18 +165,14 @@ function checkConflictFields(view: CompanyView): string[] {
 // ───────────────────────────────────────────────────────────
 
 /**
- * 업체 1곳을 선택한 면허 기준으로 판정한다.
+ * 업체 1곳을 판정한다.
  * 부적격 조건이 있어도 검토 필요 사유를 함께 모아 담당자가 전체 상황을 볼 수 있게 한다.
  * `today`를 인자로 받아 테스트에서 날짜를 고정할 수 있다.
  */
-export function judge(
-  company: Company,
-  selectedLicense: LicenseName,
-  today: string,
-): Judgment {
+export function judge(company: Company, today: string): Judgment {
   const view = buildCompanyView(company);
-  const disqualifiers = findDisqualifiers(company, selectedLicense, today);
-  const reviewItems = findReviewItems(company, view, selectedLicense, today);
+  const disqualifiers = findDisqualifiers(company, today);
+  const reviewItems = findReviewItems(company, view, today);
 
   const verdict: Verdict =
     disqualifiers.length > 0
@@ -239,5 +181,5 @@ export function judge(
         ? "검토 필요"
         : "적격";
 
-  return { verdict, evaluatedAt: today, selectedLicense, disqualifiers, reviewItems };
+  return { verdict, evaluatedAt: today, disqualifiers, reviewItems };
 }

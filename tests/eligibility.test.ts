@@ -4,10 +4,9 @@ import { describe, expect, it } from "vitest";
 import { COMPANIES } from "../lib/data/companies";
 import { addDays, todayString } from "../lib/data/dates";
 import { judge } from "../lib/eligibility";
-import type { Company, LicenseName, Verdict } from "../lib/types";
+import type { Company, Verdict } from "../lib/types";
 
 const TODAY = todayString(); // 샘플 날짜가 "오늘 기준"으로 만들어지므로 같은 오늘을 쓴다
-const LICENSE: LicenseName = "시설물유지관리업";
 
 /** 모든 조건을 충족하는 c01을 복사해 일부만 바꾼다 */
 function variant(mutate: (c: Company) => void): Company {
@@ -15,17 +14,17 @@ function variant(mutate: (c: Company) => void): Company {
   mutate(c);
   return c;
 }
-const verdictOf = (c: Company, today = TODAY): Verdict => judge(c, LICENSE, today).verdict;
+const verdictOf = (c: Company, today = TODAY): Verdict => judge(c, today).verdict;
 
 describe("T2: 샘플 10곳이 기대 판정과 일치 (DESIGN §8)", () => {
   const expected: Record<string, Verdict> = {
     c01: "적격",
     c02: "적격",
-    c03: "부적격",
+    c03: "적격",
     c04: "부적격",
     c05: "부적격",
     c06: "부적격",
-    c07: "검토 필요",
+    c07: "적격",
     c08: "검토 필요",
     c09: "검토 필요",
     c10: "검토 필요",
@@ -38,35 +37,32 @@ describe("T2: 샘플 10곳이 기대 판정과 일치 (DESIGN §8)", () => {
   for (const [id, verdict] of Object.entries(expected)) {
     it(`${id} → ${verdict}`, () => {
       const company = COMPANIES.find((c) => c.id === id)!;
-      expect(judge(company, LICENSE, TODAY).verdict).toBe(verdict);
+      expect(judge(company, TODAY).verdict).toBe(verdict);
     });
   }
 
   it("부적격·검토 필요에는 사유가 1줄 이상 있다 (PRD)", () => {
     for (const c of COMPANIES) {
-      const j = judge(c, LICENSE, TODAY);
+      const j = judge(c, TODAY);
       if (j.verdict !== "적격") {
         expect(j.disqualifiers.length + j.reviewItems.length).toBeGreaterThan(0);
       }
     }
   });
 
-  it("면허 선택이 판정에 반영된다: c03은 전기공사업을 고르면 적격", () => {
-    const c03 = COMPANIES.find((c) => c.id === "c03")!;
-    expect(judge(c03, "전기공사업", TODAY).verdict).toBe("적격");
-    expect(judge(c03, "시설물유지관리업", TODAY).verdict).toBe("부적격");
+  it("면허는 판정에 쓰이지 않는다: 면허가 곧 만료되거나 이미 지나도 판정은 그대로 (c03·c07 → 적격)", () => {
+    const c07 = COMPANIES.find((c) => c.id === "c07")!; // 면허 만료 18일 전
+    expect(judge(c07, TODAY).verdict).toBe("적격");
+    const expired = variant((c) => (c.kiscon!.licenses![0].expiresAt = addDays(TODAY, -5)));
+    expect(judge(expired, TODAY).verdict).toBe("적격");
+  });
+
+  it("판정 결과에 선택 면허 항목이 없다", () => {
+    expect(judge(COMPANIES[0], TODAY)).not.toHaveProperty("selectedLicense");
   });
 });
 
-describe("T3: 만료일 경계값 (면허·조달청)", () => {
-  it("면허: D-31 적격 / D-30 검토 필요 / D-0 검토 필요 / 지남 부적격", () => {
-    const withLicense = (d: number) => variant((c) => (c.kiscon!.licenses![0].expiresAt = addDays(TODAY, d)));
-    expect(verdictOf(withLicense(31))).toBe("적격");
-    expect(verdictOf(withLicense(30))).toBe("검토 필요");
-    expect(verdictOf(withLicense(0))).toBe("검토 필요");
-    expect(verdictOf(withLicense(-1))).toBe("부적격");
-  });
-
+describe("T3: 만료일 경계값 (조달청)", () => {
   it("조달청: D-31 적격 / D-30 검토 필요 / D-0 검토 필요 / 지남 부적격", () => {
     const withReg = (d: number) => variant((c) => (c.pps!.registration!.expiresAt = addDays(TODAY, d)));
     expect(verdictOf(withReg(31))).toBe("적격");
@@ -142,7 +138,7 @@ describe("출처 불일치 (R4)", () => {
   });
   it("주소지가 다르면 두 값이 사유에 모두 나온다", () => {
     const c10 = COMPANIES.find((c) => c.id === "c10")!;
-    const text = judge(c10, LICENSE, TODAY).reviewItems.join(" ");
+    const text = judge(c10, TODAY).reviewItems.join(" ");
     expect(text).toContain("서울특별시 강남구");
     expect(text).toContain("서울특별시 서초구");
   });
@@ -154,7 +150,7 @@ describe("판정 우선순위", () => {
       x.kiscon!.bizStatus = "폐업";
       x.pps!.credit = null;
     });
-    const j = judge(c, LICENSE, TODAY);
+    const j = judge(c, TODAY);
     expect(j.verdict).toBe("부적격");
     expect(j.disqualifiers.length).toBeGreaterThan(0);
     expect(j.reviewItems.length).toBeGreaterThan(0);

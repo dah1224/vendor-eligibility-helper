@@ -96,8 +96,6 @@ function VerdictResult({
       </div>
 
       <dl className="grid grid-cols-[6rem_1fr] gap-y-1 text-sm">
-        <dt className="text-zinc-500 dark:text-zinc-400">선택 면허</dt>
-        <dd>{judgment.selectedLicense}</dd>
         <dt className="text-zinc-500 dark:text-zinc-400">판정 기준일</dt>
         <dd className="tabular-nums">{judgment.evaluatedAt}</dd>
       </dl>

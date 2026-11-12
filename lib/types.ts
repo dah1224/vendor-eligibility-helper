@@ -125,7 +125,6 @@ export interface Judgment {
   verdict: Verdict;
   /** 판정 기준일 (오늘) YYYY-MM-DD */
   evaluatedAt: string;
-  selectedLicense: LicenseName;
   /** 부적격 사유 (코드가 만든 문장) */
   disqualifiers: string[];
   /** 검토 필요 사유 (코드가 만든 문장) */

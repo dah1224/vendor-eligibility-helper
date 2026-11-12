@@ -3,19 +3,17 @@
 import { InfoCard, InfoRow } from "@/components/InfoCard";
 import { SourceValue } from "@/components/SourceValue";
 import { daysBetween } from "@/lib/data/dates";
-import type { CompanyView, LicenseName } from "@/lib/types";
+import type { CompanyView } from "@/lib/types";
 
 interface CompanyDetailProps {
   view: CompanyView;
-  /** 담당자가 고른 면허 — 면허 목록에서 이 행을 표시한다 */
-  selectedLicense: LicenseName;
   /** 판정 기준일(오늘) — 만료까지 남은 일수 계산용 */
   evaluatedAt: string;
 }
 
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 
-export function CompanyDetail({ view, selectedLicense, evaluatedAt }: CompanyDetailProps) {
+export function CompanyDetail({ view, evaluatedAt }: CompanyDetailProps) {
   return (
     <div className="flex flex-col gap-4">
       {/* 1. 업체 기본정보 */}
@@ -64,11 +62,6 @@ export function CompanyDetail({ view, selectedLicense, evaluatedAt }: CompanyDet
                       <tr key={l.regNo} className="border-t border-zinc-100 dark:border-zinc-800">
                         <td className="py-1.5 pr-3">
                           {l.name}
-                          {l.name === selectedLicense && (
-                            <span className="ml-2 rounded bg-blue-100 px-1.5 py-0.5 text-xs text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                              선택 면허
-                            </span>
-                          )}
                         </td>
                         <td className="py-1.5 pr-3 tabular-nums">{l.regNo}</td>
                         <td className="py-1.5 pr-3 tabular-nums">{l.expiresAt}</td>

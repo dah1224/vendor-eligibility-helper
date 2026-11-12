@@ -1,9 +1,9 @@
 // Design Ref: §7.1 — 샘플 업체를 업체명·사업자등록번호로 찾는다.
-// 번호: 하이픈 유무와 관계없이 정확히 일치 / 업체명: 공백을 무시한 부분 일치 (두 출처의 상호 모두 대상)
+// 업체명과 사업자등록번호를 둘 다 받아 둘 다 맞는 업체만 찾는다. (번호: 정확 일치 / 업체명: 공백을 무시한 부분 일치)
 // Design Ref: §10 — 서버에서만 쓴다.
 import "server-only";
 
-import { BIZ_NO_FORMAT_ERROR, MAX_QUERY_LENGTH, parseSearchQuery } from "./bizNo";
+import { BIZ_NO_FORMAT_ERROR, MAX_QUERY_LENGTH, normalizeBizNo } from "./bizNo";
 import { COMPANIES } from "./data/companies";
 import { buildCompanyView } from "./view";
 import type { FieldValue } from "./types";
@@ -22,7 +22,11 @@ export interface SearchResultItem {
 
 export type SearchOutcome =
   | { ok: true; results: SearchResultItem[] }
-  | { ok: false; code: "EMPTY_QUERY" | "QUERY_TOO_LONG" | "INVALID_BIZ_NO"; message: string };
+  | {
+      ok: false;
+      code: "EMPTY_NAME" | "EMPTY_BIZ_NO" | "QUERY_TOO_LONG" | "INVALID_BIZ_NO";
+      message: string;
+    };
 
 /** 비교용: 공백을 모두 없애고 소문자로 */
 const squash = (s: string) => s.replace(/\s+/g, "").toLowerCase();
@@ -34,35 +38,41 @@ function firstText(field: FieldValue<string>): string | null {
   return null;
 }
 
-export function searchCompanies(rawQuery: string): SearchOutcome {
-  const query = rawQuery.trim();
+/**
+ * 업체명과 사업자등록번호를 **둘 다** 받아, 둘 다 맞는 업체만 찾는다. (같은 이름의 업체가 있어도 헷갈리지 않게)
+ *  · 사업자등록번호: 하이픈 유무와 관계없이 정확히 일치 (숫자 10자리가 아니면 검색하지 않고 형식 오류)
+ *  · 업체명: 공백·대소문자를 무시한 부분 일치 (두 출처의 상호 중 하나라도 맞으면 됨)
+ */
+export function searchCompanies(rawName: string, rawBizNo: string): SearchOutcome {
+  const name = rawName.trim();
+  const bizNoText = rawBizNo.trim();
 
-  if (query === "") {
-    return { ok: false, code: "EMPTY_QUERY", message: "검색어를 입력해 주세요." };
+  if (name === "") {
+    return { ok: false, code: "EMPTY_NAME", message: "업체명을 입력해 주세요." };
   }
-  if (query.length > MAX_QUERY_LENGTH) {
+  if (bizNoText === "") {
+    return { ok: false, code: "EMPTY_BIZ_NO", message: "사업자등록번호를 입력해 주세요." };
+  }
+  if (name.length > MAX_QUERY_LENGTH || bizNoText.length > MAX_QUERY_LENGTH) {
     return {
       ok: false,
       code: "QUERY_TOO_LONG",
-      message: `검색어는 ${MAX_QUERY_LENGTH}자 이내로 입력해 주세요.`,
+      message: `입력은 ${MAX_QUERY_LENGTH}자 이내로 해 주세요.`,
     };
   }
-
-  const parsed = parseSearchQuery(query);
-  if (parsed.kind === "invalidBizNo") {
+  const bizNo = normalizeBizNo(bizNoText);
+  if (bizNo === null) {
     return { ok: false, code: "INVALID_BIZ_NO", message: BIZ_NO_FORMAT_ERROR };
   }
 
-  const matched = COMPANIES.filter((company) => {
-    if (parsed.kind === "bizNo") return company.bizNo === parsed.bizNo;
-    if (parsed.kind === "name") {
-      const needle = squash(parsed.name);
-      return [company.kiscon?.companyName, company.pps?.companyName].some(
-        (name) => name != null && squash(name).includes(needle),
-      );
-    }
-    return false;
-  });
+  const needle = squash(name);
+  const matched = COMPANIES.filter(
+    (company) =>
+      company.bizNo === bizNo &&
+      [company.kiscon?.companyName, company.pps?.companyName].some(
+        (n) => n != null && squash(n).includes(needle),
+      ),
+  );
 
   const results = matched.map((company) => {
     const view = buildCompanyView(company);
