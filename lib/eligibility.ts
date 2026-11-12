@@ -1,6 +1,6 @@
 // Design Ref: §6 — 판정은 코드가 한다. 이 파일이 판정 규칙 전부를 맡는다.
 // 조달청에서 가져올 수 있는 정보만으로 판정한다. (면허·영업 상태·행정처분·계약 실적·신용은 조달청에서 받을 수 없어 판정하지 않는다)
-//   부적격 조건 → findDisqualifiers : 조달청 등록 업종이 모두 유효기간이 지남
+//   부적격 조건 → findDisqualifiers : 부정당제재 이력이 있음 / 조달청 등록 업종이 모두 유효기간이 지남
 //   검토 필요 조건 → findReviewItems : 등록 업종 없음 / 유효기간 30일 이내 / 확인 불가 항목
 //   최종 판정 → judge()  (부적격 > 검토 필요 > 적격 순으로 먼저 해당하는 단계)
 // Design Ref: §10 — 서버에서만 쓴다.
@@ -15,16 +15,30 @@ const EXPIRY_WARNING_DAYS = 30;
 
 /** 부적격 사유 문장 목록. 빈 배열이면 부적격 조건이 없다는 뜻. */
 export function findDisqualifiers(company: PpsCompany, today: string): string[] {
-  const industries = company.industries;
+  const reasons: string[] = [];
+
+  // 부정당제재(입찰참가자격 제한) 이력이 있으면 부적격. 조달청은 조회 시점에 효력 있는 제재만 주므로 1건이라도 있으면 해당.
+  // 확인 불가(null)이면 없다고 단정하지 않는다 → 검토 필요
+  const sanctions = company.sanctions;
+  if (sanctions && sanctions.length > 0) {
+    const detail = sanctions
+      .map((s) => [s.startDate && s.endDate ? `${s.startDate}~${s.endDate}` : null, s.reason].filter(Boolean).join(" "))
+      .filter((t) => t !== "")
+      .join(", ");
+    reasons.push(`조달청 부정당제재(입찰참가자격 제한) ${sanctions.length}건이 있습니다${detail ? `(${detail})` : ""}.`);
+  }
+
   // 업종 정보가 확인 불가(null)이거나 등록 업종이 없으면([]) 부적격으로 단정하지 않는다 → 검토 필요
-  if (!industries || industries.length === 0) return [];
-
-  // 만료일이 없는 업종은 유효하다. 모든 업종이 만료일이 오늘보다 앞서면 조달청 등록이 효력을 잃은 것.
-  const allExpired = industries.every((i) => i.expiresAt !== null && i.expiresAt < today);
-  if (!allExpired) return [];
-
-  const latest = industries.map((i) => i.expiresAt as string).sort().at(-1);
-  return [`조달청에 등록된 업종의 유효기간이 모두 지났습니다(가장 늦은 만료일 ${latest}).`];
+  const industries = company.industries;
+  if (industries && industries.length > 0) {
+    // 만료일이 없는 업종은 유효하다. 모든 업종이 만료일이 오늘보다 앞서면 조달청 등록이 효력을 잃은 것.
+    const allExpired = industries.every((i) => i.expiresAt !== null && i.expiresAt < today);
+    if (allExpired) {
+      const latest = industries.map((i) => i.expiresAt as string).sort().at(-1);
+      reasons.push(`조달청에 등록된 업종의 유효기간이 모두 지났습니다(가장 늦은 만료일 ${latest}).`);
+    }
+  }
+  return reasons;
 }
 
 /** 만료까지 남은 일수를 "N일 뒤(날짜)" 문구로 */
@@ -60,6 +74,7 @@ export function findReviewItems(company: PpsCompany, view: CompanyView, today: s
     { label: "상호", field: view.basic.companyName },
     { label: "주소지", field: view.address },
     { label: "조달청 업체등록", field: view.procurement },
+    { label: "부정당제재 이력", field: view.sanctions },
   ];
   for (const { label, field } of fields) {
     if (field.kind === "unknown") items.push(`${label} 정보를 확인할 수 없습니다.`);

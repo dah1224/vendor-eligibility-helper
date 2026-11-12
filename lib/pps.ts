@@ -1,12 +1,13 @@
 // 조달청 나라장터 "사용자정보 서비스"(UsrInfoService02) 조회 — 사업자등록번호로 업체 정보를 가져온다.
 //   · 기본정보  getPrcrmntCorpBasicInfo02      : inqryDiv=3 + bizno (기간 없이 번호로 정확히 조회됨)
 //   · 업종정보  getPrcrmntCorpIndstrytyInfo02  : inqryDiv=1 + bizno + 최근 1주 기간 (기간과 상관없이 그 업체의 업종 전체가 나옴)
+//   · 부정당제재 getUnptRsttCorpInfo02          : inqryDiv=1 + bizno (조회 시점에 효력 있는 제재만 나옴. 없으면 0건)
 // 보안: 인증키(NARAMARKET_API_KEY)는 서버에서만 읽는다. 로그·오류 메시지에 키나 주소를 남기지 않는다.
 // 개인정보: 응답의 대표자명·전화번호·상세주소는 읽지 않는다(받아도 버린다). 주소는 시군구까지만 남긴다.
 import "server-only";
 
 import { addDays, todayString } from "./data/dates";
-import type { PpsCompany, PpsIndustry } from "./types";
+import type { PpsCompany, PpsIndustry, PpsSanction } from "./types";
 
 const BASE_URL = "https://apis.data.go.kr/1230000/ao/UsrInfoService02";
 /** 조달청 응답을 기다리는 최대 시간 */
@@ -106,6 +107,17 @@ export function toIndustry(item: Record<string, unknown>): PpsIndustry | null {
   };
 }
 
+/** 부정당제재 1건으로 정리. 사유 등은 외부 데이터라 길이를 제한한다 */
+export function toSanction(item: Record<string, unknown>): PpsSanction {
+  return {
+    startDate: dateOf(item.rsttBgnDate),
+    endDate: dateOf(item.rsttEndDate),
+    institution: text(item.insttNm),
+    reason: text(item.enfcPrvNm),
+    law: text(item.lawordNm),
+  };
+}
+
 // ───────────── 같은 번호 재조회 줄이기 ─────────────
 
 const cache = new Map<string, { at: number; value: PpsLookupOutcome }>();
@@ -121,7 +133,7 @@ export function clearPpsCache(): void {
  * 사업자등록번호(숫자 10자리)로 조달청에서 업체를 찾는다.
  *  · 기본정보가 없으면 "notFound"
  *  · 기본정보 호출이 실패하면 "error"
- *  · 기본정보는 있는데 업종 호출만 실패하면 업종을 null(확인 불가)로 두고 found로 돌려준다 (판정에서 "검토 필요")
+ *  · 기본정보는 있는데 업종·제재 호출만 실패하면 그 항목을 null(확인 불가)로 두고 found로 돌려준다 (판정에서 "검토 필요")
  */
 export async function lookupPpsCompany(bizNo: string, today: string = todayString()): Promise<PpsLookupOutcome> {
   const hit = cache.get(bizNo);
@@ -131,9 +143,10 @@ export async function lookupPpsCompany(bizNo: string, today: string = todayStrin
 
   const to = today.replaceAll("-", "") + "2359";
   const from = addDays(today, -6).replaceAll("-", "") + "0000";
-  const [basic, industry] = await Promise.all([
+  const [basic, industry, sanction] = await Promise.all([
     callApi("getPrcrmntCorpBasicInfo02", { inqryDiv: "3", bizno: bizNo }),
     callApi("getPrcrmntCorpIndstrytyInfo02", { inqryDiv: "1", bizno: bizNo, inqryBgnDt: from, inqryEndDt: to }),
+    callApi("getUnptRsttCorpInfo02", { inqryDiv: "1", bizno: bizNo }),
   ]);
 
   let value: PpsLookupOutcome;
@@ -151,15 +164,28 @@ export async function lookupPpsCompany(bizNo: string, today: string = todayStrin
             .map(toIndustry)
             .filter((x): x is PpsIndustry => x !== null)
         : null;
+      // 번호가 같은 제재만 쓴다. 호출이 실패하면 null(확인 불가) — "제재 없음"으로 단정하지 않는다
+      const sanctions = sanction.ok
+        ? sanction.items.filter((i) => String(i.bizno ?? bizNo).replace(/D/g, "") === bizNo).map(toSanction)
+        : null;
       value = {
         status: "found",
-        company: { bizNo, name: text(record.corpNm), region: toSigungu(record.rgnNm), industries, baseDate: today },
+        company: {
+          bizNo,
+          name: text(record.corpNm),
+          region: toSigungu(record.rgnNm),
+          openedAt: dateOf(record.opbizDt),
+          bizDivision: text(record.corpBsnsDivNm),
+          industries,
+          sanctions,
+          baseDate: today,
+        },
       };
     }
   }
 
   // 조회 실패·업종 확인 불가(일부 실패)는 저장하지 않아 다음 조회 때 다시 시도한다
-  const cacheable = value.status === "notFound" || (value.status === "found" && value.company.industries !== null);
+  const cacheable = value.status === "notFound" || (value.status === "found" && value.company.industries !== null && value.company.sanctions !== null);
   if (cacheable) {
     if (cache.size >= MAX_CACHE_ENTRIES) cache.delete(cache.keys().next().value as string);
     cache.set(bizNo, { at: Date.now(), value });

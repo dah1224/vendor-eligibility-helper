@@ -21,8 +21,13 @@ export function buildCompanyView(company: PpsCompany): CompanyView {
   return {
     id: company.bizNo,
     bizNo: formatBizNo(company.bizNo),
-    basic: { companyName: field(company.name, source) },
+    basic: {
+      companyName: field(company.name, source),
+      bizDivision: field(company.bizDivision, source),
+      openedAt: field(company.openedAt, source),
+    },
     address: field(company.region, source),
     procurement: field(company.industries === null ? null : { industries: company.industries }, source),
+    sanctions: field(company.sanctions === null ? null : { sanctions: company.sanctions }, source),
   };
 }

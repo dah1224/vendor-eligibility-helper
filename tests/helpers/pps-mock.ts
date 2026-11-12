@@ -12,6 +12,14 @@ export interface MockIndustry {
   rep?: boolean;
 }
 
+export interface MockSanction {
+  /** 오늘 기준 제재 시작·종료까지 며칠 (시작은 보통 음수, 종료는 양수) */
+  startInDays: number;
+  endInDays: number;
+  institution: string;
+  reason: string;
+}
+
 export interface MockCompany {
   bizNo: string;
   name: string;
@@ -22,6 +30,10 @@ export interface MockCompany {
   industryFails?: boolean;
   /** true면 기본정보 호출이 실패 */
   basicFails?: boolean;
+  /** 효력 있는 부정당제재 (없으면 0건) */
+  sanctions?: MockSanction[];
+  /** true면 부정당제재 호출만 실패 */
+  sanctionFails?: boolean;
 }
 
 /** 시험용 업체들 (모두 가짜 번호·가짜 이름) */
@@ -65,6 +77,22 @@ export const MOCK_COMPANIES: MockCompany[] = [
   },
   // 조달청 오류: 기본정보 호출 실패
   { bizNo: "1000000006", name: "바른설비(가상)", rgnNm: "광주광역시 북구 용봉동", industries: [], basicFails: true },
+  // 부적격: 업종은 문제없지만 부정당제재 중
+  {
+    bizNo: "1000000007",
+    name: "사랑종합관리(가상)",
+    rgnNm: "울산광역시 남구 삼산동",
+    industries: [{ name: "시설물유지관리업", expiresInDays: null, status: "정상", rep: true }],
+    sanctions: [{ startInDays: -20, endInDays: 100, institution: "가상시 가상구", reason: "계약 이행을 하지 않은 자(가상)" }],
+  },
+  // 검토 필요: 부정당제재 호출만 실패 → 제재 확인 불가
+  {
+    bizNo: "1000000008",
+    name: "아라종합관리(가상)",
+    rgnNm: "경기도 수원시 영통구 매탄동",
+    industries: [{ name: "시설물유지관리업", expiresInDays: null, status: "정상", rep: true }],
+    sanctionFails: true,
+  },
 ];
 
 const okHeader = { resultCode: "00", resultMsg: "정상" };
@@ -92,6 +120,8 @@ export function mockPpsResponse(url: string, today: string = TODAY): Response | 
             bizno: company.bizNo,
             corpNm: company.name,
             rgnNm: company.rgnNm,
+            opbizDt: "2015-03-02 00:00:00",
+            corpBsnsDivNm: "공사",
             adrs: "서울특별시 어딘가 1길",
             dtlAdrs: "비밀 상세주소 101호",
             telNo: "010-0000-0000",
@@ -120,6 +150,25 @@ export function mockPpsResponse(url: string, today: string = TODAY): Response | 
             : `${addDays(today, i.expiresInDays)} 00:00:00`,
       indstrytyStatsNm: i.status ?? "",
       rprsntIndstrytyYn: i.rep ? "Y" : "N",
+    }));
+    return jsonResponse({ response: { header: okHeader, body: { items, totalCount: items.length } } });
+  }
+
+  if (operation === "getUnptRsttCorpInfo02") {
+    // 실제처럼 inqryDiv=1 + bizno가 있어야 번호로 찾는다
+    if (params.get("inqryDiv") !== "1" || !bizno) {
+      return jsonResponse({ "nkoneps.com.response.ResponseError": { header: { resultCode: "08", resultMsg: "필수값 입력 에러" } } });
+    }
+    if (company?.sanctionFails) return jsonResponse({}, 500);
+    const items = (company?.sanctions ?? []).map((s) => ({
+      bizno,
+      corpNm: company?.name,
+      rsttBgnDate: `${addDays(today, s.startInDays)} 00:00:00`,
+      rsttEndDate: `${addDays(today, s.endInDays)} 00:00:00`,
+      insttNm: s.institution,
+      enfcPrvNm: s.reason,
+      lawordNm: "지방계약법-부정당제재근거법령",
+      rsttProgrsNm: "제재",
     }));
     return jsonResponse({ response: { header: okHeader, body: { items, totalCount: items.length } } });
   }

@@ -184,7 +184,7 @@ export default function Home() {
                   </p>
                 ) : (
                   <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                    사업자등록번호로 조회하면 조달청에서 가져온 기본정보와 조달청 업체등록 정보가 이곳에 표시됩니다.
+                    사업자등록번호로 조회하면 조달청에서 가져온 기본정보, 업체등록, 부정당제재 정보가 이곳에 표시됩니다.
                   </p>
                 )}
               </div>
@@ -208,7 +208,7 @@ export default function Home() {
       {/* ⑥ 바닥글 */}
       <footer className="border-t border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
         <p className="mx-auto w-full max-w-6xl px-6 py-3 text-xs text-zinc-500 dark:text-zinc-400">
-          조달청 나라장터에서 가져온 정보이며, 조달청에서 제공하지 않는 항목(면허·영업 상태·행정처분·계약 실적·신용·재무)은 표시하지 않습니다.
+          조달청 나라장터에서 가져온 정보이며, 조달청에서 제공하지 않는 항목(면허·영업 상태·계약 실적·신용·재무)은 표시하지 않습니다.
         </p>
       </footer>
     </div>

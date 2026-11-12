@@ -32,6 +32,20 @@ export interface PpsIndustry {
   representative: boolean;
 }
 
+/** 조달청 부정당제재(입찰참가자격 제한) 1건 — 조회 시점에 효력이 있는 제재만 온다 */
+export interface PpsSanction {
+  /** 제재 시작일 YYYY-MM-DD (모르면 null) */
+  startDate: string | null;
+  /** 제재 종료일 YYYY-MM-DD (모르면 null) */
+  endDate: string | null;
+  /** 제재를 통보한 수요기관 */
+  institution: string | null;
+  /** 제재 사유(요약) */
+  reason: string | null;
+  /** 근거 법령 */
+  law: string | null;
+}
+
 /** 조달청에서 찾은 업체 1곳 (개인정보 항목 — 대표자·전화·상세주소 — 는 받아도 버린다) */
 export interface PpsCompany {
   /** 숫자 10자리 */
@@ -40,8 +54,14 @@ export interface PpsCompany {
   name: string | null;
   /** 시군구까지만 (예: "서울특별시 중랑구") — 모르면 null */
   region: string | null;
+  /** 개업일 YYYY-MM-DD (모르면 null) */
+  openedAt: string | null;
+  /** 업체업무구분 (예: "물품", "공사", "용역") — 모르면 null */
+  bizDivision: string | null;
   /** null = 확인 불가(조회 실패), [] = 조달청에 등록된 업종 없음 */
   industries: PpsIndustry[] | null;
+  /** null = 확인 불가(조회 실패), [] = 효력 있는 부정당제재 없음 */
+  sanctions: PpsSanction[] | null;
   /** 조회한 날(기준일) */
   baseDate: string;
 }
@@ -62,11 +82,17 @@ export interface CompanyView {
   /** 1) 기본정보 */
   basic: {
     companyName: FieldValue<string>;
+    /** 업체업무구분 (물품·공사·용역) */
+    bizDivision: FieldValue<string>;
+    /** 개업일 */
+    openedAt: FieldValue<string>;
   };
   /** 주소지(시군구) */
   address: FieldValue<string>;
   /** 2) 조달청 업체등록 — 등록된 업종 목록 */
   procurement: FieldValue<{ industries: PpsIndustry[] }>;
+  /** 2) 행정처분 이력 — 조달청 부정당제재 */
+  sanctions: FieldValue<{ sanctions: PpsSanction[] }>;
 }
 
 // ───────────── 판정 결과 ─────────────

@@ -1,6 +1,6 @@
 // Design Ref: §3 ④ 조회 항목 — 조달청에서 가져올 수 있는 항목만 대분류로 묶어 표로 보여준다.
-//   1) 기본정보    — 상호, 사업자등록번호, 주소지(시군구)  (가로 한 줄 표)
-//   2) 자격사항 검토 — 조달청 업체등록(등록된 업종과 유효기간)
+//   1) 기본정보    — 상호, 사업자등록번호, 업체업무구분, 개업일, 주소지(시군구)  (가로 한 줄 표)
+//   2) 자격사항 검토 — 조달청 업체등록(등록된 업종과 유효기간), 행정처분 이력(조달청 부정당제재)
 // 조달청에서 받을 수 없는 항목(면허·영업 상태·행정처분·계약 실적·신용·재무)은 표시하지 않고, 맨 아래 출처 상자에 이름만 밝힌다.
 // 출처·기준일은 항목마다 붙이지 않고 화면 맨 아래에 한 번에 모아 보여준다.
 // 글자 크기: 세부 항목 이름(표 머리글) 13pt, 내용 12pt. 대분류 안은 가운데 정렬.
@@ -34,11 +34,13 @@ export function CompanyDetail({ view, evaluatedAt }: CompanyDetailProps) {
           className="rounded-lg border border-zinc-200 bg-white p-4 text-center dark:border-zinc-800 dark:bg-zinc-900"
         >
           <div className="overflow-x-auto">
-            <table className={`${TABLE} min-w-[420px]`}>
+            <table className={`${TABLE} min-w-[640px]`}>
               <thead>
                 <tr>
                   <th scope="col" className={TH}>상호</th>
                   <th scope="col" className={TH}>사업자등록번호</th>
+                  <th scope="col" className={TH}>업체업무구분</th>
+                  <th scope="col" className={TH}>개업일</th>
                   <th scope="col" className={TH}>주소지(시군구)</th>
                 </tr>
               </thead>
@@ -48,6 +50,12 @@ export function CompanyDetail({ view, evaluatedAt }: CompanyDetailProps) {
                     <SourceValue field={view.basic.companyName}>{(v) => v}</SourceValue>
                   </td>
                   <td className={`${TD} tabular-nums`}>{view.bizNo}</td>
+                  <td className={TD}>
+                    <SourceValue field={view.basic.bizDivision}>{(v) => v}</SourceValue>
+                  </td>
+                  <td className={`${TD} whitespace-nowrap tabular-nums`}>
+                    <SourceValue field={view.basic.openedAt}>{(v) => v}</SourceValue>
+                  </td>
                   <td className={TD}>
                     <SourceValue field={view.address}>{(v) => v}</SourceValue>
                   </td>
@@ -106,6 +114,46 @@ export function CompanyDetail({ view, evaluatedAt }: CompanyDetailProps) {
             }
           </SourceValue>
         </InfoCard>
+
+        <InfoCard title="행정처분 이력 (조달청 부정당제재)">
+          <SourceValue field={view.sanctions}>
+            {({ sanctions }) =>
+              sanctions.length === 0 ? (
+                <span className="text-[12pt]">효력 있는 부정당제재 이력 없음</span>
+              ) : (
+                <table className={TABLE}>
+                  <thead>
+                    <tr>
+                      <th scope="col" className={TH}>제재 기간</th>
+                      <th scope="col" className={TH}>통보 기관</th>
+                      <th scope="col" className={TH}>사유</th>
+                      <th scope="col" className={TH}>근거 법령</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sanctions.map((s, idx) => (
+                      <tr key={`${s.startDate}-${idx}`} className={ROW}>
+                        <td className={`${TD} tabular-nums`}>
+                          {s.startDate && s.endDate ? (
+                            <>
+                              <span className="whitespace-nowrap">{s.startDate}</span>
+                              <span className="block">~ <span className="whitespace-nowrap">{s.endDate}</span></span>
+                            </>
+                          ) : (
+                            "확인 불가"
+                          )}
+                        </td>
+                        <td className={TD}>{s.institution ?? "확인 불가"}</td>
+                        <td className={TD}>{s.reason ?? "확인 불가"}</td>
+                        <td className={TD}>{s.law ?? "확인 불가"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )
+            }
+          </SourceValue>
+        </InfoCard>
       </Group>
 
       {/* 출처 — 화면 맨 아래에 한 번에 모아 보여준다 */}
@@ -117,10 +165,13 @@ export function CompanyDetail({ view, evaluatedAt }: CompanyDetailProps) {
           items={[
             { label: "상호", field: view.basic.companyName },
             { label: "주소지", field: view.address },
+            { label: "업체업무구분", field: view.basic.bizDivision },
+            { label: "개업일", field: view.basic.openedAt },
             { label: "조달청 업체등록", field: view.procurement },
+            { label: "행정처분 이력", field: view.sanctions },
           ]}
-          notUsedForJudgment={["주소지"]}
-          notAvailable={["면허", "영업 상태", "행정처분 이력", "계약 실적", "신용·재무"]}
+          notUsedForJudgment={["주소지", "업체업무구분", "개업일"]}
+          notAvailable={["면허", "영업 상태", "계약 실적", "신용·재무"]}
         />
       </section>
     </div>

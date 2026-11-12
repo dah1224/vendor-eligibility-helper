@@ -187,7 +187,7 @@ describe("buildUserMessage", () => {
   it("외부(조달청) 데이터인 업체명은 40자까지만 보낸다", async () => {
     const d = await getCompanyDetail("1000000003", TODAY);
     if (!d.ok) throw new Error("실패");
-    const long = { ...d.company, basic: { companyName: { kind: "value" as const, value: "가".repeat(100), source: { source: "PPS" as const, label: "조달청", baseDate: TODAY } } } };
+    const long = { ...d.company, basic: { ...d.company.basic, companyName: { kind: "value" as const, value: "가".repeat(100), source: { source: "PPS" as const, label: "조달청", baseDate: TODAY } } } };
     expect(JSON.parse(buildUserMessage(long, d.judgment)).업체명).toHaveLength(40);
   });
 });

@@ -45,6 +45,29 @@ describe("getCompanyDetail", () => {
     }
   });
 
+  it("부정당제재 업체는 부적격이고 화면용 제재 정보가 나온다", async () => {
+    const r = await getCompanyDetail("1000000007", TODAY);
+    if (!r.ok) throw new Error("실패");
+    expect(r.judgment.verdict).toBe("부적격");
+    expect(r.judgment.disqualifiers[0]).toContain("부정당제재");
+    expect(r.company.sanctions.kind).toBe("value");
+    if (r.company.sanctions.kind === "value") expect(r.company.sanctions.value.sanctions).toHaveLength(1);
+  });
+
+  it("기본정보에 업체업무구분과 개업일이 들어간다", async () => {
+    const r = await getCompanyDetail("1000000001", TODAY);
+    if (!r.ok) throw new Error("실패");
+    expect(r.company.basic.bizDivision).toMatchObject({ kind: "value", value: "공사" });
+    expect(r.company.basic.openedAt).toMatchObject({ kind: "value", value: "2015-03-02" });
+  });
+
+  it("제재 조회만 실패하면 '확인 불가'로 나오고 검토 필요", async () => {
+    const r = await getCompanyDetail("1000000008", TODAY);
+    if (!r.ok) throw new Error("실패");
+    expect(r.company.sanctions.kind).toBe("unknown");
+    expect(r.judgment.verdict).toBe("검토 필요");
+  });
+
   it("업종 조회만 실패하면 '확인 불가'로 나오고 검토 필요", async () => {
     const r = await getCompanyDetail("1000000005", TODAY);
     if (!r.ok) throw new Error("실패");

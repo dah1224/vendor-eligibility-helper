@@ -26,7 +26,31 @@ describe("lookupPpsCompany", () => {
     expect(r.company.name).toBe("가람시설관리(가상)");
     expect(r.company.region).toBe("서울특별시 강남구"); // 동은 버린다
     expect(r.company.industries).toHaveLength(2);
+    expect(r.company.openedAt).toBe("2015-03-02");
+    expect(r.company.bizDivision).toBe("공사");
+    expect(r.company.sanctions).toEqual([]);
     expect(r.company.baseDate).toBe(TODAY);
+  });
+
+  it("부정당제재는 inqryDiv=1 + bizno로 조회하고, 제재 기간·기관·사유를 담는다", async () => {
+    const r = await lookupPpsCompany("1000000007", TODAY);
+    if (r.status !== "found") throw new Error("실패");
+    expect(r.company.sanctions).toHaveLength(1);
+    expect(r.company.sanctions![0]).toMatchObject({
+      institution: "가상시 가상구",
+      reason: "계약 이행을 하지 않은 자(가상)",
+      law: "지방계약법-부정당제재근거법령",
+    });
+    const url = fetchMock.mock.calls.map((c) => new URL(c[0] as string)).find((u) => u.pathname.endsWith("getUnptRsttCorpInfo02"))!;
+    expect(url.searchParams.get("inqryDiv")).toBe("1");
+    expect(url.searchParams.get("bizno")).toBe("1000000007");
+  });
+
+  it("부정당제재 호출만 실패하면 제재를 확인 불가(null)로 두고 found — '제재 없음'으로 단정하지 않는다", async () => {
+    const r = await lookupPpsCompany("1000000008", TODAY);
+    if (r.status !== "found") throw new Error("실패");
+    expect(r.company.sanctions).toBeNull();
+    expect(r.company.industries).not.toBeNull();
   });
 
   it("기본정보는 inqryDiv=3 + bizno, 업종정보는 inqryDiv=1 + bizno + 기간으로 부른다", async () => {
@@ -139,7 +163,7 @@ describe("값 정리", () => {
     expect(i!.name.length).toBeLessThanOrEqual(100);
   });
 
-  it("시험용 업체는 6곳이다", () => {
-    expect(MOCK_COMPANIES).toHaveLength(6);
+  it("시험용 업체는 8곳이다", () => {
+    expect(MOCK_COMPANIES).toHaveLength(8);
   });
 });
