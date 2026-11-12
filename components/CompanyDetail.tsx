@@ -7,7 +7,7 @@
 // PRD: 확인하지 못한 항목은 "확인 불가"로 표시하고 추측해서 채우지 않는다 / 출처가 다르면 두 값을 모두 보여준다.
 import type { ReactNode } from "react";
 import { InfoCard } from "@/components/InfoCard";
-import { SourceFooter, SourceValue } from "@/components/SourceValue";
+import { SourceSummary, SourceValue } from "@/components/SourceValue";
 import { daysBetween } from "@/lib/data/dates";
 import type { CompanyView } from "@/lib/types";
 
@@ -17,13 +17,15 @@ interface CompanyDetailProps {
   evaluatedAt: string;
 }
 
-const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
+/** 금액은 백만원 단위로 표시한다. 백만원에 못 미치면 소수점으로 (예: 100,000원 → 0.1백만원, 50,000원 → 0.05백만원) */
+const million = (n: number) =>
+  `${(n / 1_000_000).toLocaleString("ko-KR", { maximumFractionDigits: 2 })}백만원`;
 
 /** 표 머리글(세부 항목 이름) 13pt / 표 내용 12pt */
-const TH = "py-1.5 pr-3 text-left align-top text-[13pt] font-semibold text-zinc-700 dark:text-zinc-200";
-const TD = "py-1.5 pr-3 align-top text-[12pt] break-words";
+const TH = "py-1.5 px-2 text-center align-top text-[13pt] font-semibold text-zinc-700 dark:text-zinc-200";
+const TD = "py-1.5 px-2 text-center align-top text-[12pt] break-words";
 // 가로로 나란히 놓인 칸은 너비를 모두 같게(table-fixed) 한다
-const TABLE = "w-full table-fixed text-left";
+const TABLE = "w-full table-fixed text-center";
 const ROW = "border-t border-zinc-100 dark:border-zinc-800";
 
 export function CompanyDetail({ view, evaluatedAt }: CompanyDetailProps) {
@@ -33,7 +35,7 @@ export function CompanyDetail({ view, evaluatedAt }: CompanyDetailProps) {
       <Group title="1) 기본정보">
         <section
           aria-label="기본정보"
-          className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
+          className="rounded-lg border border-zinc-200 bg-white p-4 text-center dark:border-zinc-800 dark:bg-zinc-900"
         >
           <div className="overflow-x-auto">
             <table className={`${TABLE} min-w-[640px]`}>
@@ -65,9 +67,6 @@ export function CompanyDetail({ view, evaluatedAt }: CompanyDetailProps) {
               </tbody>
             </table>
           </div>
-          <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
-            주소지 값은 판정에 쓰지 않음 (확인 불가·불일치는 검토 필요에 반영)
-          </p>
         </section>
       </Group>
 
@@ -172,8 +171,9 @@ export function CompanyDetail({ view, evaluatedAt }: CompanyDetailProps) {
 
       {/* 3) 그 외 사항 — 계약 실적 · 신용·재무를 가로로 나란히. 값은 판정에 쓰지 않는다 */}
       <Group title="3) 그 외 사항">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <InfoCard title="계약 실적" notUsedForJudgment>
+        {/* 계약 실적 : 신용·재무 = 2.5 : 1.5 */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[2.5fr_1.5fr]">
+          <InfoCard title="계약 실적">
             <SourceValue field={view.contracts} stacked>
               {(contracts) =>
                 contracts.length === 0 ? (
@@ -192,7 +192,7 @@ export function CompanyDetail({ view, evaluatedAt }: CompanyDetailProps) {
                         <tr key={`${c.year}-${c.title}`} className={ROW}>
                           <td className={`${TD} whitespace-nowrap tabular-nums`}>{c.year}년</td>
                           <td className={TD}>{c.title}</td>
-                          <td className={`${TD} whitespace-nowrap tabular-nums`}>{won(c.amountKrw)}</td>
+                          <td className={`${TD} whitespace-nowrap tabular-nums`}>{million(c.amountKrw)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -202,7 +202,7 @@ export function CompanyDetail({ view, evaluatedAt }: CompanyDetailProps) {
             </SourceValue>
           </InfoCard>
 
-          <InfoCard title="신용·재무" notUsedForJudgment>
+          <InfoCard title="신용·재무">
             <SourceValue field={view.credit} stacked>
               {(c) => (
                 <table className={TABLE}>
@@ -239,6 +239,7 @@ export function CompanyDetail({ view, evaluatedAt }: CompanyDetailProps) {
           { label: "계약 실적", field: view.contracts },
           { label: "신용·재무", field: view.credit },
         ]}
+        notUsedForJudgment={["주소지", "계약 실적", "신용·재무"]}
       />
     </div>
   );
@@ -248,21 +249,26 @@ export function CompanyDetail({ view, evaluatedAt }: CompanyDetailProps) {
 function Group({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section aria-label={title} className="flex flex-col gap-3">
-      <h2 className="border-l-4 border-blue-700 pl-2 text-base font-bold">{title}</h2>
+      <h2 className="rounded-md bg-blue-700 px-3 py-2 text-left text-[14pt] font-bold text-white">{title}</h2>
       {children}
     </section>
   );
 }
 
-/** 화면 맨 아래에 놓는 출처 상자 (전체 항목의 출처·기준일을 한 표로) */
-function SourceBox({ items }: { items: Parameters<typeof SourceFooter>[0]["items"] }) {
+/** 화면 맨 아래에 놓는 출처 상자 (출처는 이름만 간단히, 그 아래 줄에 판정에 쓰지 않는 항목) */
+function SourceBox({
+  items,
+  notUsedForJudgment,
+}: {
+  items: Parameters<typeof SourceSummary>[0]["items"];
+  notUsedForJudgment: string[];
+}) {
   return (
     <section
       aria-label="출처"
-      className="rounded-lg border border-zinc-200 bg-white px-4 pb-2 pt-3 dark:border-zinc-800 dark:bg-zinc-900"
+      className="rounded-lg border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900"
     >
-      <h3 className="text-sm font-semibold">출처</h3>
-      <SourceFooter items={items} />
+      <SourceSummary items={items} notUsedForJudgment={notUsedForJudgment} />
     </section>
   );
 }

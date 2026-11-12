@@ -58,9 +58,9 @@ export function SourceValue<T>({ field, children, stacked = false }: SourceValue
   return <div>{children(field.value)}</div>;
 }
 
-// ───────────── 대분류 맨 아래에 모아 보여주는 출처 표 ─────────────
+// ───────────── 화면 맨 아래에 모아 보여주는 출처 요약 ─────────────
 
-/** 출처 표에 올릴 항목 하나: 항목 이름 + 그 항목의 값(출처를 꺼내는 용도) */
+/** 출처 요약에 올릴 항목 하나: 항목 이름 + 그 항목의 값(출처를 꺼내는 용도) */
 export interface SourceItem {
   label: string;
   field: FieldValue<unknown>;
@@ -74,39 +74,50 @@ function sourcesOf(field: FieldValue<unknown>): SourceMeta[] {
 }
 
 /**
- * 대분류 하나에 들어 있는 항목들의 출처·기준일을 표 하나로 모은다.
- * 같은 출처·같은 기준일이면 한 줄로 합친다. (예: "상호, 업종, 영업 상태 — 샘플(KISCON 형식) · 2026-11-11")
+ * 전체 항목의 출처를 "출처: KISCON, 조달청 · 기준일 2026-11-11" 한 줄로 요약한다.
+ * (기준일이 출처마다 다르면 "KISCON(기준일), 조달청(기준일)" 형태로 적는다)
+ * 아래 줄에는 판정에 쓰이지 않는 항목 이름만 간단히 적는다.
  */
-export function SourceFooter({ items }: { items: SourceItem[] }) {
-  const rows = new Map<string, { source: SourceMeta; labels: string[] }>();
-  for (const { label, field } of items) {
+export function SourceSummary({
+  items,
+  notUsedForJudgment,
+}: {
+  items: SourceItem[];
+  /** 값을 판정에 쓰지 않는 항목 이름들 */
+  notUsedForJudgment: string[];
+}) {
+  const byName = new Map<SourceName, Set<string>>();
+  for (const { field } of items) {
     for (const source of sourcesOf(field)) {
-      const key = `${source.source}|${source.label}|${source.baseDate}`;
-      const row = rows.get(key) ?? { source, labels: [] };
-      if (!row.labels.includes(label)) row.labels.push(label);
-      rows.set(key, row);
+      const dates = byName.get(source.source) ?? new Set<string>();
+      dates.add(source.baseDate);
+      byName.set(source.source, dates);
     }
   }
-  if (rows.size === 0) return null;
+  const names = [...byName.keys()];
+  const allDates = new Set([...byName.values()].flatMap((d) => [...d]));
+
+  let sourceText: string | null = null;
+  if (names.length > 0) {
+    sourceText =
+      allDates.size === 1
+        ? `${names.map((n) => SOURCE_SHORT_NAME[n]).join(", ")} · 기준일 ${[...allDates][0]}`
+        : names.map((n) => `${SOURCE_SHORT_NAME[n]}(기준일 ${[...(byName.get(n) ?? [])].sort().join("·")})`).join(", ");
+  }
 
   return (
-    <table aria-label="출처" className="w-full border-t border-zinc-200 text-left text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
-      <thead>
-        <tr>
-          <th scope="col" className="w-2/5 py-1.5 pr-3 pt-2 font-medium">출처 대상</th>
-          <th scope="col" className="py-1.5 pr-3 pt-2 font-medium">출처</th>
-          <th scope="col" className="w-28 py-1.5 pt-2 font-medium">기준일</th>
-        </tr>
-      </thead>
-      <tbody>
-        {[...rows.values()].map(({ source, labels }) => (
-          <tr key={`${source.source}-${source.baseDate}`}>
-            <td className="py-0.5 pr-3 align-top">{labels.join(", ")}</td>
-            <td className="py-0.5 pr-3 align-top">{source.label}</td>
-            <td className="py-0.5 align-top tabular-nums">{source.baseDate}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <div className="flex flex-col gap-1 text-xs text-zinc-500 dark:text-zinc-400">
+      {sourceText && (
+        <p>
+          <span className="font-semibold text-zinc-700 dark:text-zinc-200">출처:</span> {sourceText}
+        </p>
+      )}
+      {notUsedForJudgment.length > 0 && (
+        <p>
+          <span className="font-semibold text-zinc-700 dark:text-zinc-200">판정에 쓰지 않는 항목:</span>{" "}
+          {notUsedForJudgment.join(", ")}
+        </p>
+      )}
+    </div>
   );
 }
